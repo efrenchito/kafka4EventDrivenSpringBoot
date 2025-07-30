@@ -1,0 +1,203 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgement & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handle Deserializer Errors
+📝 S11 : Kafka Consumer - Exceptions and Retries
+📝 S12 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S13 : Kafka Consumer - Idempotency
+📝 S14 : Apache Kafka and Database Transactions
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 03 - Kafka Topics - CLI
+=======================================================================================================================================
+
+🚀 Introduction to Kafka Topic CLI
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+🧐🕵️🔎 We can access to 'kafka-topics.sh' shell script by accessing kafka/bin/ folder
+ -> Then we can create|list|describe|modify|delete topics with it
+
+$ ./bin/kafka-topics.sh --create --topic topic1 --partitions 3 --replication.factor 3 --bootstrap-server localhost:9092
+=======================================================================================================================================
+Kafka topic CLI is used to manage and interact with topics within Kafka cluster using command line interface.
+
+[terminal]
+$ cd {WORKSPACE}
+$ cd kafka
+$ ls
+LICENSE  💥bin      libs    site-docs
+NOTICE   config   licenses
+$ ls 
+.. kafka-topics.sh
+
+
+kafka-topics.sh
+ o Create
+ o List
+ o Describe
+ o Modify
+ o Delete
+
+
+
+$ ./bin/kafka-topics.sh --create --topic topic1 --partitions 3 --replication.factor 3 --bootstrap-server localhost:9092
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Producing Kafka Message without a Key
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+Before trying to create a Kafka Topic ensure Kafka Server is up and running
+[terminal]
+$ ./bin/kafka-server-start.sh config/kraft/server-1.properties
+$ ./bin/kafka-server-start.sh config/kraft/server-2.properties
+$ ./bin/kafka-server-start.sh config/kraft/server-3.properties
+...
+[terminal]
+$ $ ./bin/kafka-topics.sh --create --topic 💥topic1 --partitions 3 --replication.factor 3 --bootstrap-server localhost:9092, localhost:9094
+===================================================================================================================================================================
+To create a Kafka Topics, we must start our Kafka Servers first
+
+[terminal(1)]
+$ ./bin/kafka-server-start.sh config/kraft/server-1.properties
+
+[terminal(2)]
+$ ./bin/kafka-server-start.sh config/kraft/server-2.properties
+
+[terminal(3)]
+$ ./bin/kafka-server-start.sh config/kraft/server-3.properties
+
+
+...
+
+[terminal]
+$ cd {WORKSPACE}
+$ cd kafka
+$ ls
+LICENSE  💥bin      libs    site-docs
+NOTICE   config   licenses
+$ ls ./bin
+.. kafka-topics.sh
+
+$ ./bin/kafka-topics.sh --create --topic 💥topic1 --partitions 3 --replication.factor 3 --bootstrap-server localhost:9092, localhost:9094
+Created topic topic1.
+$ ./bin/kafka-topics.sh --create --topic 💥topic2 --partitions 3 --replication.factor 3 --bootstrap-server localhost:9092, localhost:9094
+Created topic topic2.
+
+🧐🕵️🔎 
+#1 You can NOT have topics with the same Topic name
+#2 Topic names should be meaningful
+🧨⚠️🤯 Topic names can NOT have special characters (Only characters and digits)
+
+🧐🕵️🔎 The number of partitions within a Topic will mostly depend on the business needs of your application
+✅ A good practice is to have the same number of partitions or greater than the number of Consumers
+ -> If I have more consumers than partitions, then extra consumers will sit idle
+
+🧐🕵️🔎 --replication-factor specifies how many copies of each partition are stored across different brokers (Number of replicas)
+ -> This allow us to achieve reliability and fault tolerance
+ -> Data will be available even if some brokers fail or become unreachable
+ 🧨⚠️🤯 replication-factor can NOT be greater than the number of partitions
+
+~
+
+--bootstrap-server parameter specifies a list of addresses of Kafka Clusters in our cluster
+ -> I can specify one single server only
+ => If this initial server is healthy. Kafka will be able to discover other servers and access topics and partitions
+    ..However if this broker is NOT available I won't be able to create a Topic until that server is back online
+ 🧨⚠️🤯 It's recommended to have at least two brokers listed here, so you have a back-up Broker in case one Broker is NOT available
+
+
+
+
+
+~
+
+
+
+
+
+🚀 List and Describe Kafka Topics
+=======================================================================================================================================
+
+[terminal]
+$ ./bin/kafka-topics.sh --list  --bootstrap-server localhost:9092
+topic1
+topic2
+
+
+$ ./bin/kafka-topics.sh --describe  --bootstrap-server localhost:9092
+Topic: topic1    TopicId: {topicID1}  PartitionCount: 3  ReplicationFactor: 3    Configs: segment.bytes=1073741824
+    Topic: topic1    Partition: 0    Leader: 3    Replicas: 3,1,2   Isr: 3,1,2
+    Topic: topic1    Partition: 1    Leader: 1    Replicas: 1,2,3   Isr: 1,2,3
+    Topic: topic1    Partition: 2    Leader: 2    Replicas: 2,3,1   Isr: 2,3,1
+Topic: topic2    TopicId: {topicID2}  PartitionCount: 3  ReplicationFactor: 3    Configs: segment.bytes=1073741824
+    Topic: topic2    Partition: 0    Leader: 1    Replicas: 1,2,3   Isr: 1,2,3
+    Topic: topic2    Partition: 1    Leader: 2    Replicas: 2,3,1   Isr: 2,3,1
+    Topic: topic3    Partition: 2    Leader: 3    Replicas: 2,3,1   Isr: 3,1,2
+
+
+🧐🕵️🔎 Logs are divided into small pieces that are called segments
+ -> Each segment has a maximum size which you can be setted with the segments.bytes configuration
+ -> When a segment reaches its maximum size. It's closed and a new one is created
+...
+Each partition has a Leader, which is a broker that handles all read and write/request for that partition
+Each partition also has Replicas, this is copy of data in the partition that are stored in other Brokers for fault tolerance
+ISR stands for Insync Replicas, which are Replicas that are Up to date with the leader and can take over if the leader fails
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Deleting Kafka Topics
+=======================================================================================================================================
+
+⚠️ Before deleting a Topic, it's good to keep in mind that deleting a Topic is permanent
+ -> Once you delete a Topic it will be gone forever
+ -> There won't be way to undo it or recover data
+
+
+[terminal]
+$ ./kafka-topics.sh --delete --topic topic2 --bootstrap-server localhost:9092
+
+$ ./bin/kafka-topics.sh --describe  --bootstrap-server localhost:9092
+Topic: topic1    TopicId: {topicID1}  PartitionCount: 3  ReplicationFactor: 3    Configs: segment.bytes=1073741824
+    Topic: topic1    Partition: 0    Leader: 3    Replicas: 3,1,2   Isr: 3,1,2
+    Topic: topic1    Partition: 1    Leader: 1    Replicas: 1,2,3   Isr: 1,2,3
+    Topic: topic1    Partition: 2    Leader: 2    Replicas: 2,3,1   Isr: 2,3,1
+
+
+🧨⚠️🤯 There is a property called  'delete.topic.enable=true'
+ -> It's set to true by default
+ => This enables us to delete a Kafka Topic

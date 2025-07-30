@@ -1,0 +1,133 @@
+📢 S01: Apache Kafka Introduction
+=============================================================================================================================
+
+
+🚀 Microservices
+=============================================================================================================================
+🧐 What is a Microservice❓
+~~~~~~~~~~~~~~~
+A Microservice is indeed all about being smaller, focused on a single functionality, and autonomous. 
+This independence allows for easier deployment, testing, and scalability compared to traditional architectures. 
+
+🧐 How would you describe a Monolithic application in contrast❓
+~~~~~~~~~~~~~~~
+That's right! A monolithic application is indeed built as a single unit, 
+and because of this, any change typically necessitates redeploying the entire application. 
+This design can make scaling and updating more challenging compared to Microservices. 
+
+🧐 In terms of deployment, fault isolation, and scalability... 
+how do Microservices differ from Monolithic applications❓
+~~~~~~~~~~~~~~~
+Microservices' independence and smaller scope make troubleshooting and deploying updates much simpler and faster. 
+It also means any issues can be restricted to their specific service rather than causing a chain reaction in the whole system, which is a huge advantage over monolithic applications. 
+
+
+🧐 Can you explain the difference between synchronous and asynchronous communication in the context of Microservices❓
+~~~~~~~~~~~~~~~
+Synchronous communication definitely involves waiting for an immediate response before continuing, while asynchronous communication allows processes to keep running and deal with the response later when it's ready. 
+This flexibility of asynchronous communication can make systems more scalable and resilient, especially under heavy workloads. 
+
+
+~
+
+
+🚀 Apache Kafka
+=============================================================================================================================
+🧐 What is Apache Kafka❓
+~~~~~~~~~~~~~~~
+Apache Kafka is primarily a distributed event streaming platform. 
+It's used for building real-time data pipelines and streaming applications.
+It helps manage and process huge amounts of data in a highly fault-tolerant and scalable way. 
+
+
+🧐 What a Kafka topic is and why partitions are important❓
+~~~~~~~~~~~~~~~
+A Kafka topic is essentially a category or feed name where messages are stored, and partitions are subdivisions of these topics.
+This subdivision helps in parallelism, meaning multiple consumers can read simultaneously, and the system can scale effectively.
+
+
+🧐 Can the number of partitions for a Kafka topic be changed after the topic is created❓
+~~~~~~~~~~~~~~~
+Partition numbers can indeed be increased for scalability, but decreasing partitions is not supported because it could cause data loss and inconsistency.
+
+
+🧐 What's the difference between a Kafka producer and a Kafka consumer❓
+~~~~~~~~~~~~~~~
+Producers send or produce data to Kafka topics, 
+while consumers fetch or process those events, multiple consumers can subscribe to a single topic, either independently or as part of a group.
+
+
+🧐 How to preserve message order when updating data in a database using Kafka❓
+~~~~~~~~~~~~~~~
+By using a consistent key, such as an ID, messages with the same key will always be sent to the same partition. 
+Since Kafka maintains order within partitions, this guarantees that the order is preserved when reading those messages
+Perfect for scenarios like database updates!
+
+
+
+
+
+~
+
+
+
+
+
+📢 S02: Apache Kafka Brokers
+=============================================================================================================================
+
+
+
+
+~
+
+
+
+
+
+📢 
+=============================================================================================================================
+The advantage of using Docker compose file is that you can describe your application stack in a single file
+and then use it to start/stop multiple Docker containers at the same time
+ -> Different versions support different features, and they're compatible with different versions of Docker engine
+ -> KAFKA_KRAFT_CLUSTER_ID={ID} Sets unique cluster ID
+    ..Each Kafka server defined in this docker-compose.yml file will need to use same cluster ID
+    ..This cluster ID can be generated manually or via Apache Kafka CLI script
+ -> KAFKA_CFG_NODE_ID | In Apache Kafka Cluster each broker/node must contain a unique node ID
+    [terminal]
+    $ cd {WORKSPACE}
+    $ ./kafka-storage.sh random-uuid
+ -> KAFKA_CFG_PROCESS_ROLES=controller,broker
+    o controller - manages cluster coordination and metadata
+    o broker - handles message storage and client communication
+ -> KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka-1:9091
+    What is Quorum Voter? Voters keep track of important information to make decisions and ensure
+    that everyone is on the same page. In Kafka Cluster Controller plays a similar role:
+     - It oversees the state of the cluster
+     - Ensures data replication
+     - Facilitates failover mechanisms
+     => Controller Quorum is a group of servers that collectively act as a brain
+       {nodeID}@{service-name}:{PORT} | nodeID = 1, service-name = kafka-1 | PORT = 9091 * Different from service port number
+       1@kafka-1:9091
+ -> KAFKA_CFG_LISTENERS=PLAINTEXT://9090,CONTROLLER://9091,EXTERNAL://:9092
+    ..In Kafka Listeners define network interfaces, port numbers and protocols through which producers and consumers can connect to Kafka Brokers
+    ..'KAFKA_CFG_LISTENERS' is used to specify the available listeners and their endpoints
+    ..Each entry in this list looks like an URL and it follows the following format: {LISTENER-NAME}://{HOSTNAME}:{PORT}
+      PLAINTEXT -> Used for unencrypted communication within Kafka Cluster (Used for inter-broker communication)
+      CONTROLLER -> Used for internal communication among brokers 
+      EXTERNAL -> Used to allow external Producers/Consumers outside the docker-container to connect to Kafka Cluster
+      ~
+      {HOSTNAME} Notice we're not defining a host-name here. Which means that Kafka binds all Available Network Interfaces
+      ~
+      🧐🕵️🔎 Notice the CONTROLLER and EXTERNAL port-numbers matches with the controller and kafka broker
+ -> KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka-1:9090,EXTERNAL://localhost:9092
+ -> KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP
+    ..This allow us for each LISTENER to assign a SECURITY Protocol 
+    o There are other security protocoles like SSL & SASL_SSL for production environment
+      - SSL only uses encryption 
+      - SASL_SSL if you requires encryption and authentication 
+      => SSL stands for (Secure Socket Layer) | SASL stands for (Simple Authentication Security Layer)
+
+What is the difference between LISTENERS & ADVERTISED_LISTENERS❓
+ -> KAFKA_CFG_LISTENERS is used by the own Broker Server
+ -> KAFKA_CFG_ADVERTISED_LISTENERS is used by Producers/Consumers

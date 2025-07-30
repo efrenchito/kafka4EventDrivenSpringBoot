@@ -1,0 +1,465 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgement & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handle Deserializer Errors
+📝 S11 : Kafka Consumer - Exceptions and Retries
+📝 S12 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S13 : Kafka Consumer - Idempotency
+📝 S14 : Apache Kafka and Database Transactions
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 02 - Apache Kafka Broker
+=======================================================================================================================================
+
+
+
+🚀 Apache Kafka - Docker compose (Initial Configuration)
+=======================================================================================================================================
+Although Apache Kafka is not recommended to be used in a production environment on Windows
+ -> You can still install it on Windows for development purposes
+⚓ https://www.confluent.io/blog/set-up-and-run-kafka-on-windows-linux-wsl-2/
+
+
+[docker-compose.yml]
+version: "3.8"
+
+services:
+  kafka-1:
+    image: bitnami/kafka:latest
+    ports:
+      - "9092:9092" 
+
+
+The advantage of using Docker compose file is that you can describe your application stack in a single file
+and then use it to start/stop multiple Docker containers at the same time
+ -> Different versions support different features, and they're compatible with different versions of Docker engine
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Apache Kafka - KRaft Configuration
+=======================================================================================================================================
+[docker-compose.yml]
+version: "3.8"
+
+services:
+  kafka-1:
+    image: bitnami/kafka:latest
+    ports:
+      - "9092:9092" 
+    environment:
+      - KAFKA_KRAFT_CLUSTER_ID={ID}
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka-1:9091
+
+~
+ -> KAFKA_KRAFT_CLUSTER_ID={ID} Sets unique cluster ID
+    ..Each Kafka server defined in this docker-compose.yml file will need to use same cluster ID
+    ..This cluster ID can be generated manually or via Apache Kafka CLI script
+ -> KAFKA_CFG_NODE_ID | In Apache Kafka Cluster each broker/node must contain a unique node ID
+    [terminal]
+    $ cd {WORKSPACE}
+    $ ./kafka-storage.sh random-uuid   ##Generates a random UUID
+ -> KAFKA_CFG_PROCESS_ROLES=controller,broker
+    o controller - manages cluster coordination and metadata
+    o broker - handles message storage and client communication
+ -> KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka-1:9091
+    What is Quorum Voter? Voters keep track of important information to make decisions and ensure
+    that everyone is on the same page. In Kafka Cluster Controller plays a similar role:
+     - It oversees the state of the cluster
+     - Ensures data replication
+     - Facilitates failover mechanisms
+     - Manages metadata about topics, partitions and leaders
+     - coordinates leader election if broker goes down
+     => Controller Quorum is a group of servers that collectively act as a brain
+       {nodeID}@{service-name}:{PORT} | nodeID = 1, service-name = kafka-1 | PORT = 9091 * Different from service port number
+       1@kafka-1:9091
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Apache Kafka - Listeners
+=======================================================================================================================================
+[✏️#~/...docker-compose.yml]
+version: "3.8"
+
+services:
+  kafka-1:
+    image: bitnami/kafka:latest
+    ports:
+      - "9092:9092" 
+    environment:
+      - KAFKA_KRAFT_CLUSTER_ID={ID}
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka-1:9091
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://9090,CONTROLLER://9091,EXTERNAL://:9092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka-1:9090,EXTERNAL://${HOSTNAME:-localhost}:9092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+
+~
+ -> KAFKA_CFG_LISTENERS=PLAINTEXT://9090,CONTROLLER://9091,EXTERNAL://:9092
+    ..In Kafka Listeners define network interfaces, port numbers and protocols through which producers and consumers can connect to Kafka Brokers
+    ..'KAFKA_CFG_LISTENERS' is used to specify the available listeners and their endpoints
+    ..Each entry in this list looks like an URL and it follows the following format: {LISTENER-NAME}://{HOSTNAME}:{PORT}
+      PLAINTEXT -> Used for unencrypted communication within Kafka Cluster (Used for inter-broker communication)
+      CONTROLLER -> Used for internal communication among brokers 
+      EXTERNAL -> Used to allow external Producers/Consumers outside the docker-container to connect to Kafka Cluster
+      ~
+      {HOSTNAME} Notice we're not defining a host-name here. Which means that Kafka binds all Available Network Interfaces
+      ~
+      🧐🕵️🔎 Notice the CONTROLLER and EXTERNAL port-numbers matches with the controller and kafka broker
+ -> KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka-1:9090,EXTERNAL://localhost:9092
+ -> KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP
+    ..This allow us for each LISTENER to assign a SECURITY Protocol 
+    o There are other security protocoles like SSL & SASL_SSL for production environment
+      - SSL only uses encrypting 
+      - SASL_SSL if you requires encrypting and authentication 
+      => SSL stands for (Secure Socket Layer) | SASL stands for (Simple Authentication Security Layer)
+
+What is the difference between LISTENERS & ADVERTISED_LISTENERS❓
+ -> KAFKA_CFG_LISTENERS is used by the own Broker Server
+ -> KAFKA_CFG_ADVERTISED_LISTENERS is used by Producers/Consumers
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Docker Container - Volumes
+=======================================================================================================================================
+By default, Kafka stores its data like log topics and partitions inside Docker container. (Within Container File system)
+To avoid this we'll use Docker Volumes
+
+[✏️#~/...docker-compose.yml]
+version: "3.8"
+
+services:
+  kafka-1:
+    image: bitnami/kafka:latest
+    ports:
+      - "9092:9092" 
+    environment:
+      - KAFKA_KRAFT_CLUSTER_ID={ID}
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka-1:9091
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://9090,CONTROLLER://9091,EXTERNAL://:9092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka-1:9090,EXTERNAL://${HOSTNAME:-localhost}:9092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+    volumes:
+      - /Users/ediaz/kafka/docker-compose/volumes/server-1:/bitnami/kafka
+
+🧐🕵️🔎 We can configure a Custom Network and make our containers run in its own isolated network.
+ -> We're not going to do that since this is enough for development purpose
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Docker Compose and Environment File for Apache Kafka
+=======================================================================================================================================
+
+
+[✏️#~/...environment.env]
+HOSTNAME=host.docker.internal
+
+'host.docker.internal' is a special DNS name that is provided by docker and it resolves to internal IP address of host machine
+ -> If there is a gateway you can use 'gateway.docker.internal'
+
+🧐🕵️🔎 This options is very helpful because you don't need to know IP Address or hostname that works on the host machine
+
+🧨⚠️🤯 It's better to use this environment.env file 
+ -> Since 'localhost' might not even be available within Docker container
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Starting Single Kafka Server in Docker Container
+=======================================================================================================================================
+
+[terminal]
+$ cd {WORKSPACE}
+$ ls
+docker-compose.yml   environment.env
+$ docker-compose -f docker-compose.yml --env-file environment.env up
+
+🧐🕵️🔎 Since the Docker Compose file is the default we don't need to provide its name
+ -> In case the Docker Compose file is different we need to call it with the flag -f as follows:  $ docker-compose -f {custom-name.yml} up 
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Execute Apache Kafka CLI Scripts within Docker Container
+=======================================================================================================================================
+
+[Docker Desktop]
+<EXEC>
+$ docker exec kafka-1 -it bash
+$ pwd
+/
+$ ls
+bin  boot  docker-entrypoint-initdb.d  etc  lib  media  opt  root  run.sh  srv
+bitname  dev  entrypoint.sh  home  lib64  mnt  proc  run sbin  sys
+$ cd opt
+$ ls 
+bitnami
+$ cd bitnami
+$ ls
+common  java  kafka  licenses  scripts
+$ cd kafka
+$ ls 
+LICENSE  NOTICE  bin  config  libs  licenses  logs  site-docs 
+$ cd bin
+$ ls 
+...  kafka-topics.sh
+
+$ ./kafka-topics.sh --create --topic test-topic --bootstrap-server host.docker.internal:9092
+Created topic test-topic.
+$ ./kafka-topics.sh --list --bootstrap-server host.docker.internal:9092
+test-topic
+$
+
+🧐🕵️🔎 Notice here we've used 'host.docker.internal:9092' as bootstrap-server
+ -> This won't work outside of the Docker container
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Execute Apache Kafka CLI Scripts in Docker from the Host machine
+=======================================================================================================================================
+
+[terminal]
+$ docker-compose exec kafka-1 /opt/bitnami/kafka/bin/kafka-topics.sh --list
+  --bootstrap-server host.docker.internal:9092
+test-topic
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Execute Apache Kafka CLI Scripts on the Host machine
+=======================================================================================================================================
+
+Download Kafka CLI
+
+[terminal]
+$ cd {WORKSPACE}
+$ cd kafka
+$ ls
+LICENSE    bin        docker-compose     licenses
+NOTICE     config     libs               logs
+$ cd bin
+$ ls
+...  kafka-topics.sh
+
+
+$ ./kafka-topics.sh  --list  --bootstrap-server localhost:9092
+...
+Error connecting to node host.docker.internal:9092
+java.net.UnknwonHostExcption: host.docker.internal
+
+🧐🕵️🔎 Since host.docker.internal is not exposed outside of our docker container
+ -> We're unable to access it
+ ✅ To solve this we need to modify our  host file
+...
+[✏️#~/.../etc/host]
+127.0.0.1  host.docker.internal
+
+
+[terminal]
+$ ./kafka-topics.sh  --list  --bootstrap-server localhost:9092
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Multiple Kafka Brokers in a Docker Compose File
+=======================================================================================================================================
+
+[✏️#~/...docker-compose.yml]
+version: "3.8"
+
+services:
+  kafka-1:
+    image: bitnami/kafka:latest
+    ports:
+      - "9092:9092" 
+    environment:
+      - KAFKA_KRAFT_CLUSTER_ID={ID}
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka-1:9091,💥2@kafka-2:9091💥
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://9090,CONTROLLER://9091,EXTERNAL://:9092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka-1:9090,EXTERNAL://${HOSTNAME:-localhost}:9092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+    volumes:
+      - /Users/ediaz/kafka/docker-compose/volumes/server-1:/bitnami/kafka
+  kafka-2:
+    image: bitnami/kafka:latest
+    ports:
+      - "9094:9094" 
+    environment:
+      - KAFKA_KRAFT_CLUSTER_ID={ID}
+      - KAFKA_CFG_NODE_ID=2  💥
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka-1:9091,2@kafka-2:9091,3@kafka-3:9091  💥
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://9090,CONTROLLER://9091,EXTERNAL://:💥9094💥
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://💥kafka-2💥:9090,EXTERNAL://${HOSTNAME:-localhost}:💥9094💥
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+    volumes:
+      - /Users/ediaz/kafka/docker-compose/volumes/💥server-2💥:/bitnami/kafka
+  kafka-3:
+    image: bitnami/kafka:latest
+    ports:
+      - "9096:9096" 
+    environment:
+      - KAFKA_KRAFT_CLUSTER_ID={ID}
+      - KAFKA_CFG_NODE_ID=3
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka-1:9091,2@kafka-2:9091,3@kafka-3:9091  💥
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://9090,CONTROLLER://9091,EXTERNAL://:💥9096💥
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://💥kafka-3💥:9090,EXTERNAL://${HOSTNAME:-localhost}:💥9096💥
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+    volumes:
+      - /Users/ediaz/kafka/docker-compose/volumes/💥server-3💥:/bitnami/kafka
+~
+service-name
+port-number
+KAFKA_CFG_NODE_ID
+LISTENERS -> EXTERNAL port
+ADVERTISED_LISTENER -> EXTERNAL port
+volumes -> host-path
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Running Multiple Kafka Servers in Docker containers
+=======================================================================================================================================
+
+[terminal(1)]
+$ cd {WORKSPACE}
+$ cd kafka
+$ ls
+LICENSE    bin        docker-compose     licenses     site-docs
+NOTICE     config     libs               logs
+$ cd docker-compose
+$ ls
+docker-compose.yml    environment.env    volumes
+
+...
+
+$ docker-compose -f docker-compose.yml --env-file environment.env up
+
+
+
+[terminal(2)]
+$ cd {WORKSPACE}
+$ cd kafka/bin
+$ ls
+...  kafka-topics.sh
+
+$ ./kafka-topics.sh  --create -topic test-topic2  --partitions 3 --replication-factor 2 --bootstrap-server localhost:9092
+Created topic test-topic2.
+$ ./kafka-topics.sh --list --bootstrap-server localhost:9094
+test-topic
+test-topic2
+$ ./kafka-topics.sh --list --bootstrap-server localhost:9094
+test-topic
+test-topic2

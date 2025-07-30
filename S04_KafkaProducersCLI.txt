@@ -1,0 +1,108 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgement & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handle Deserializer Errors
+📝 S11 : Kafka Consumer - Exceptions and Retries
+📝 S12 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S13 : Kafka Consumer - Idempotency
+📝 S14 : Apache Kafka and Database Transactions
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 04 - Kafka Producers - CLI
+=======================================================================================================================================
+
+🚀 Introduction to Kafka Producers - CLI
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+Kafka Producers CLI is used to send messages to a particular Kafka Topic
+
+[terminal]
+$ cd {WORKSPACE}
+$ cd kafka
+$ ls
+LICENSE  💥bin      libs    site-docs
+NOTICE   config   licenses
+$ ls 
+.. kafka-console-producer.sh
+
+
+kafka-topics.sh
+ o Send message with a Key
+ o Send message without a Key
+ o Send multiple messages from a file
+
+
+
+$ ./bin/kafka-console-producer.sh --bootstrap-server localhost:9092,localhost:9094 --topic 💥my-topic
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Creating a New Kafka Topic
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+Before trying to create a Kafka Topic ensure Kafka Server is up and running
+[terminal]
+$ ./bin/kafka-server-start.sh config/kraft/server-1.properties
+$ ./bin/kafka-server-start.sh config/kraft/server-2.properties
+$ ./bin/kafka-server-start.sh config/kraft/server-3.properties
+...
+[terminal]
+$ ./bin/kafka-console-producer.sh --bootstrap-server localhost:9092,localhost:9094 --topic 💥my-topic
+
+🧨⚠️🤯 If you send a message to a Topic that doesn't exist
+ -> Kafka Producer will respond with error
+ -> However if property 'auto.create.topics.enable' is set to true, it will also automatically create the topic
+=======================================================================================================================================
+
+[terminal]
+$ cd {WORKSPACE}
+$ cd kafka/bin
+$ ls
+... kafka-topics.sh  💥kafka-console-producer.sh
+
+$ ./bin/kafka-console-producer.sh --bootstrap-server localhost:9092,localhost:9094 --topic 💥my-topic
+> Hello World
+❌ Error while fetching metadata with correlation id 5 : {my-topic=UNKNOWN_TOPIC_OR_PARTITION} (org.apache.kafka.clients.NetworkClient)
+> Hello World 2
+
+🧐🕵️🔎 Even though I got that error message, I could still continue sending messages
+ -> By default Kafka is configured to automatically create a new topic if that topic does NOT exist
+ => This is defined at the property  
+
+🧨⚠️🤯 If you send a message to a Topic that doesn't exist
+ -> Kafka Producer will respond with error, but it will also automatically create the topic
+
+
+🧐🕵️🔎 Even though the topic can be created automatically in case it doesn't exist a best practice is 
+ -> To create the Topics before sending messages to it 
+ -> Otherwise the Topic will be created with the default Configuration and that could not match with what you need
+
+

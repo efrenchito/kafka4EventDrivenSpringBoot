@@ -1,0 +1,876 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgement & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handle Deserializer Errors
+📝 S11 : Kafka Consumer - Exceptions and Retries
+📝 S12 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S13 : Kafka Consumer - Idempotency
+📝 S14 : Apache Kafka and Database Transactions
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 01 - Apache Kafka Introduction
+=======================================================================================================================================
+
+🚀 Course Introduction
+=======================================================================================================================================
+This course is designed for Beginners on How to use Apache Kafka to build event driven Spring Boot Microservices.
+ o Start working with Apache Kafka from the very beginning
+   -> How to download Apache Kafka for the very first time
+   -> How to make it work on your computer
+ o Hands-on & Practical
+   -> Create Microservices yourself starting from the very beginning
+
+
+
+What we'll learn in this course❓
+ o How Apache Kafka is used to build event driven SpringBoot Microservices.
+ o Review Microservices and Apache Kafka architecture
+ o Kafka components like: Topic / Kafka / Producer / Consumer / Broker ...
+ o How to download Apache Kafka for the very first time and run it on your computer (Cluster)
+ o Kafka CLI (Create Kafka Topics / Send|Read messages)
+ o How Microservices use Apache Kafka to communicate with each other
+ o How to scale your Microservices to process data faster
+ o How to recover from errors and make your applications fault tolerant
+
+
+ ...
+
+ By the end of this course, you´ll have the skills and knowledge to:
+  ✅ Confidently build Microservices that work with Apache Kafka
+
+
+
+
+
+~
+
+
+
+
+
+🚀 What is MicroService❓
+=======================================================================================================================================
+
+📝 What is Microservice?
+---------------
+Microservice is an Architectural Style that allow us to design small and autonomous applications to perform one specific business functionality.
+That can be deployed independently
+
+🕵️ Loosely Coupled, designed to scale and work in the cloud
+🕵️ Small meaning is responsible for one specific functionality 
+( It takes Single Responsibility Principle to another level NOT only at the class level but also at the application level)
+ -> NOn related activities/functionality should be implemented in a different application 
+🕵️ Autonomous meaning that is designed to be self-contained and self-sufficient.
+ -> Designed to be testable/deployed independently without relying on any other application or service.
+🕵️ Easily maintainable
+
+
+
+
+
+~
+
+
+
+
+
+🚀 What is the difference between Microservice and Monolith Application❓
+=======================================================================================================================================
+
+    Monolithic Application          Microservices
+   ------------------------       
+   |    Users Service     |         Users Service     ->  Database
+   |   Products Service   |         Products Service  ->  Database
+   |   Orders Service     |         Orders Service    ->  Database
+   ------------------------
+              |
+              v
+
+           Database  
+ 
+ 
+Loosely Coupled  -> One Service per Database
+Independently Testable
+Indepently Deployment
+Easily Modifiable
+
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Microservices Communication
+=======================================================================================================================================
+
+The most common way of communication between Microservices is via HTTP Request.
+"Microservice-A" sends an HTTP Request to "Microservice-B". 
+⚠️ Notice we won't query other's Microservices directly  -> We'll perform an HTTP Request to provided API endpoint
+🧐🕵️🔎 When it comes to direct HTTP Request Communication we'll come across Synchronous & Asynchronous HTTP Requests
+
+
+
+🕵️ Synchronous HTTP Request...
+---------------
+
+       Albums      -------------------->     Photos
+    Microservice   <--------------------   Microservice
+
+Let's assume Albums Microservice needs to fetch a list of photos from Photos Microservice
+ -> Albums Microservice will send a HTTP GET Request to API endpoint
+ <- In response Albums will receive a JSON with a list of photos
+...
+'Albums Microservice' will wait until it receives response from 'Photos Microservice' or until timeout takes place
+
+
+~
+
+
+🕵️ Asynchronous HTTP Request...
+---------------
+
+       Orders      -------------------->   Email-Notification
+    Microservice   <--------------------     Microservice
+
+Let's assume "Orders Microservice" needs to notify "Email-Notification Microservice" that a new Order was created
+ -> To do that 'Orders Microservice' will send an HTTP Post request to 'Email-Notification Microservice'
+ 🔎 However in this case 'Orders Microservice' will NOT wait for immediate response from 'Email-Notification Microservice'
+    .. It can send the request and immediately continue executing next job without waiting for email notification response
+
+
+~
+
+
+However notice that HTTP Request is not the only way of communication between Microservices
+
+
+                                      Orders
+                                   Microservice
+             ___________________________|__________________________
+            /                  /                  \                \
+           /                  /                    \                \
+          /                  /                      \                \
+
+  SMS Notification     Push Notification     Email Notification     Call Center
+    Microservice          Microservice          Microservice       Microservice
+
+Let's assume "Orders Microservice" needs to notify multiple other microservices about the fact that a new Order was created
+In fact it's very important to make sure that each of these Microservices receive that notification
+ -> We can make a direct HTTP Request to each of those microservices
+    .. However what could happen if one microservice is not currently available 
+    .. If another microservice needs to join later  e.g. "Shipping Microservice" / "Suppliers Microservice"
+       (With direct HTTP request it will be required to modify the code implementation) 
+       (So there is a coupling in the communication layer)
+✅ Here it's when Event Driven communication and Apache Kafka can help
+
+
+
+
+
+~
+
+
+
+
+
+✏️>>> Role play: Meeting with a technical interviewer
+=======================================================================================================================================
+
+
+📝 Scenario
+-----
+You are a candidate that will go for an interview with a technical interviewer. 
+You will be asked several questions relating to what you have learned before & these questions are usually asked when you are applying for an Apache Kafka developer.
+Remember that the answers to the questions have been provided in the learning videos or in the quizzes before. 
+Do not go out of topic so that you will have enough spare time and try as best as you can to describe each questions asked.
+
+At this stage, you will not be asked any questions relating to Event-Driven Communication or Apache Kafka.
+
+
+~
+
+
+📝 Kristina (AI Character)
+-----
+Kristina is a hiring manager but she has a deep understanding in how to create  Microservices that use Apache Kafka.
+Her job is to ask a candidate questions relating to the goals of this role play and to make sure they understand them. She will not go out of topic or outside of the goals scopes. She will not answer the questions herself.
+
+If a candidate is mistaken in answering a question or if the candidate does not have a clue or idea of what the answer is, she will ask them a follow up question that will help them realize the correct answer. If a candidate is still unable to provide the correct answer then she will provide correct answer so that the candidate will be able to understand the answer to the question.
+
+At this stage, she will not ask any questions relating to Event-Driven Communication or Apache Kafka.
+
+
+~
+
+
+📝 Your goals
+-----
+ o Goal 1.  Demonstrate understanding of what is a Microservice application
+ o Goal 2.  Demonstrate understanding of what is a Monolithic application
+ o Goal 3.  Demonstrate understanding of the main differences between a Microservice and a Monolithic application
+ o Goal 4.  Demonstrate understanding of how Microservices communicate with each other
+ o Goal 5.  Demonstrate understanding of what is a synchronous & asynchronous communication between Microservices
+
+
+
+🧐 What is a Microservice❓
+~~~~~~~~~~~~~~~
+Exactly! A Microservice is indeed all about being smaller, focused on a single functionality, and autonomous. 
+This independence allows for easier deployment, testing, and scalability compared to traditional architectures. 
+
+🧐 How would you describe a Monolithic application in contrast❓
+~~~~~~~~~~~~~~~
+That's right! A monolithic application is indeed built as a single unit, 
+and because of this, any change typically necessitates redeploying the entire application. 
+This design can make scaling and updating more challenging compared to Microservices. 
+
+🧐 In terms of deployment, fault isolation, and scalability, how do Microservices differ from Monolithic applications❓
+~~~~~~~~~~~~~~~
+Microservices' independence and smaller scope make troubleshooting and deploying updates much simpler and faster. 
+It also means any issues can be restricted to their specific service rather than causing a chain reaction in the whole system, which is a huge advantage over monolithic applications. 
+
+
+🧐 Can you explain the difference between synchronous and asynchronous communication in the context of Microservices❓
+~~~~~~~~~~~~~~~
+Synchronous communication definitely involves waiting for an immediate response before continuing, while asynchronous communication allows processes to keep running and deal with the response later when it's ready. 
+This flexibility of asynchronous communication can make systems more scalable and resilient, especially under heavy workloads. 
+
+
+
+~
+
+
+🔥 Goal 1 - Demonstrate understanding of what is a Microservice application
+============
+✅ Strengths
+The learner accurately described a Microservice as a smaller, focused, and autonomous unit, highlighting its independent development and deployment advantages.
+
+⚠️ Areas for improvement
+Expand a bit more on specific examples or cases where Microservices show their advantages over other architectures.
+
+✏️ Actionable tips
+Familiarize yourself with real-world examples of Microservices to provide more illustrative responses.
+
+
+
+🔥 Goal 2 - Demonstrate understanding of what is a Monolithic application
+============
+✅ Strengths
+The learner identified that a Monolithic application functions as a single unit, requiring complete redeployment upon changes.
+
+⚠️ Areas for improvement
+Elaborate on how a Monolithic application's structure can affect scalability and flexibility.
+
+✏️ Actionable tips
+View case studies comparing Monolithic and Microservices to understand their respective limitations and capabilities.
+
+
+
+🔥 Goal 3 - Demonstrate understanding of the main differences between a Microservice and a Monolithic application
+============
+✅ Strengths
+The learner effectively pinpointed the modular development and rapid deployment advantages of Microservices compared to the unified nature of Monolithic applications.
+
+⚠️ Areas for improvement
+Include mentions of more technical aspects such as maintainability and team scalability when discussing differences.
+
+✏️ Actionable tips
+Review technical documentation listing advantages and disadvantages of both architectures to broaden technical knowledge.
+
+
+
+🔥Goal 4 - Demonstrate understanding of how Microservices communicate with each other
+============
+✅ Strengths
+The learner demonstrated knowledge of synchronous and asynchronous communication methods effectively.
+
+⚠️ Areas for improvement
+Clarify with specific scenarios where each communication type is used in practice.
+
+✏️ Actionable tips
+Study scenario-driven designs to see examples of synchronous and asynchronous communication in real-world Microservices.
+
+
+
+🔥 Goal 5 - Demonstrate understanding of what is a synchronous & asynchronous communication between Microservices
+============
+✅ Strengths
+The learner clearly outlined the difference between synchronous and asynchronous communication, providing accurate descriptions.
+
+⚠️ Areas for improvement
+Provide practical examples to solidify understanding and applicability of these concepts.
+
+✏️ Actionable tips
+Work with sample projects or exercises that implement different communication styles to grasp their practical usage.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Event-Driven Architecture with Apache Kafka
+=======================================================================================================================================
+
+                        request
+        Microservice  ---------->  Microservice 
+              A       <----------       B
+                        response
+
+
+
+
+                                    Email Notification
+                                   
+            Products                 SMS Notification
+          Microservice                
+                                    Push Notification
+
+...
+
+When dealing with applications that needs to send a notification/event to multiple applications
+ -> Using HTTP Requests might NOT be an optimal solution (Probably you can use it for two or three services)
+ -> However if you need to support dozens of Microservices destination, or what if new microservices need to receive that message
+ => Here is when Apache Kafka and event-driven architecture will be very helpful to us.
+
+~
+
+With Apache Kafka...
+Microservices that needs to communicate a message to multiple microservices will publish a message to a Kafka Topic
+Microservices that are interested in receiving that message, will receive it from Apache Kafka Topic as soon as the message is available 
+ -> This model is also called Producer/Consumer or Publisher/Subscriber
+ => A very scalable and extensible architecture
+
+Let´s assume that ProductService receive a request to do something  e.g. 'Create New Product'
+So, When products microservice is done processing this request and a new product is created
+It will publish an event like for example, product created event, and then all microservices that are interested in
+receiving notification about this event will receive this event and will be able to act on it.
+
+
+🧐🕵️🔎 >>>
+Because in this architecture, microservices communicate with each other by means of publishing and consuming messages or events. 
+It is called event driven architecture.
+
+🤯⚠️🧨 In those cases, when simple request response communication is needed. You do not want to overcomplicate your system with event driven architecture. So you need to learn when to use simple request/response communication and when to use event-driven communication between microservices.
+ -> In most cases event-driven architecture is asynchronous and loosely coupled.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Apache Kafka for Microservices
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+The core components in an Apache Kafka application are Event/Producer/Consumer/Broker/Topic/Partitions
+ o Producer is a Microservice that publishes an event
+ o Consumer is a Microservice that consumes an event
+ o Broker is a server that accepts requests from a Publisher
+ o Topic is an event's storage hard Disk distributted across multiple Broker Servers
+ o Partitions allow us to segregate the events on a Topic
+~
+🧨⚠️🤯 Kafka Topic is very similar to Message Queue
+Except that when an event is consumed from a Kafka topic, that event does not get deleted from topic right away.
+It stays in the topic for as long as needed so that other microservices can also read this event.
+..
+🧠 As soon as an event gets successfully stored in Kafka Topic Consumer Microservices can read this event
+ -> Since events are stored in multiple partitions, Consumer Microservices can read this events in parallel
+ => This give us performance and scalability
+=======================================================================================================================================
+Apache Kafka is a distributed event-streaming Platform that is used to Collect, Process and Integrate data at scale.
+...
+When I think of it as a microservices developer...
+Apache Kafka is a platform that can run a cluster of multiple servers, which can span across several data centers.
+It's a platform that enables us developers to build Event-Driven Applications that can continuously exchange data 
+with each other, and we can scale this microservices as needed to support larger traffic.
+
+✅ In case there are a small number of users using our application, then we can scale down and start fewer instances
+✅ However if the number of users increase then we can scale up and start a larger number of instances
+
+
+...
+
+The core components in an Apache Kafka application are Event/Producer/Consumer/Broker/Topic/Partitions
+In a Microservice Architecture... 
+ -> Producer is a service that publishes an event
+ -> Consumer is a service that consumes events
+
+
+🧐🕵️🔎 Consumer microservices are dynamic in nature. They can scale up and down as needed
+🧐🕵️🔎 Publishers will never know how many Consumers are running, they are completely location transparent
+  -> Publishers can NOT send information to Consumers directly
+  -> Instead it will send this information to Kafka Broker
+
+
+📝 You can think of Kafka Broker as a server that accepts information from Kafka Producer, and stores it on its hard disk.
+To make our system more reliable, we'll start more than one Kafka Broker
+
+📝 Kafka Topic is an Event's storage which replicates its data on multiple servers
+ -> Meaning that it provides multiple copies of your data created.
+ => In case one server goes down, you still have your data replicated on other servers
+
+📝 Published events are stored in multiple partitions within each Topic
+
+
+🧨⚠️🤯 Kafka Topic is very similar to Message Queue
+Except that when an event is consumed from a Kafka topic, that event does not get deleted from topic right away.
+It stays in the topic for as long as needed so that other microservices can also read this event.
+
+🧠 As soon as an event gets successfully stored in Kafka Topic Consumer Microservices can read this event
+ -> Since events are stored in multiple partitions, Consumer Microservices can read this events in parallel
+ => This give us performance and scalability
+
+
+
+
+
+~
+
+
+
+
+
+❓❓❓ Apache Kafka for Microservices Quiz
+Quiz 1|5 questions
+=======================================================================================================================================
+📝 Question 1:
+What is Apache Kafka primarily used for❓
+[ ] To store data
+✅ Distributed event streaming
+[ ] To build Spring Boot Microservices
+~
+Apache Kafka is primarily used as a distributed Event Streaming Platform.
+It excels in collecting, processing, storing and integrating large volumes of data in real-time.
+Kafka allows different systems and applications to publish (produce) and subscribe to (consume) streams of events, 
+making it highly suitable for event-driven architectures
+
+
+📝 Question 2:
+You can run multiple Apache Kafka servers in a cluster. True or False❓
+✅ True
+[ ] False
+~
+Apache Kafka is designed to run as a cluster comprising multiple server or nodes.
+This clustered environment is a fundamental aspect of Kafka's architecture, allowing it to achieve high availability, 
+fault tolerance, and scalability. By running multiple servers in a cluster, Kafka can distribute the load and data 
+across different nodes. This setup also ensures that if one server goes down, others in the cluster can continue to 
+handle requests and process data, thereby maintaining the system's resilience and reliability.
+
+
+📝 Question 3:
+In the context of Apache Kafka, what is a Producer❓
+[ ] A server that manages Kafka Clusters
+✅ A microservice that publishes events
+[ ] A storage system within Kafka
+~
+A Producer is a Microservice, Application or process that publishes (produces) events or messages to Kafka Topics, 
+Producers send data to Kafka brokers, which then store the data in topics
+
+
+📝 Question 4:
+In the context of Apache Kafka, what is a Consumer❓
+[ ] An application that stores data in Kafka topics
+✅ A microservice that consumes or reads events from Kafka Topics
+[ ] A data replicatin mechanism in Kafka
+~
+A Consumer is a Microservice, Application or process that consumes or reads events or messages from Kafka topics.
+Consumers subscribe to one or more Kafka Topics and process the stream of records produced to those topics.
+
+
+📝 Question 5:
+In the context of Apache Kafka, what is a Broker❓
+[ ] A data processing tool within Kafka
+✅ A server that manages Kafka topics, facilitates writes to partitions, and handles replication
+[ ] A component that consumes data from topics
+~
+A Kafka Broker is a server that performs several critical functions within the Apacha Kafka Platform
+It servers client requests (from both Producers & Consumers), manages Kafka Topics, handles the storage of data into topic partitions, 
+and manages replication of data for fault tolerance.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Messages and Events
+=======================================================================================================================================
+Apache Kafka helps us build event-driven Microservices.
+
+📝 What is an event❓
+---------------
+In Apache Kafka an event is an indication that somethings happened.
+An event is a way of saying that something has changed in your application or system
+
+
+Event Naming Convention
+-----
+Event names should be in simple past tense.
+The name will start with a noun, then it will follow by a performed action, and then it will end with the post-fix event.
+ 
+  <Noun><PerformedAction>Event
+  e.g. UserLoggedInEvent | ProductCreatedEvent | ProductShippedEvent | ProductDeletedEvent | OrderCreatedEvent
+
+🧐🕵️🔎 The terms Events and Messages are frequentlyused interchangeably
+How ever what is the difference❓
+You can think of Kafka Message as a message envelope that carriers something inside
+A Message contains mainly a Key-Value pair, composed of Key & Event, Where both key and the value can be of different data types.
+The key and event data is the content of this envelope. Those can be of different formats: String | JSON | Avro | null
+and also a Timestamp tells us where in the history the event took place
+(These are the three main parts a Message can have).
+However it might include additional information like headers a list of key-value pairs to include additional metadata information to your kafka message e.g. Authorization headers that your destination microservice might need to access user protected resources.
+Other details can be included in a Kafka message.. You can check Kafka documentation page
+...
+The default size of a message payload is 1MB
+⚠️ Keep in mind the larger the size of the message, the slower your system will perform
+ -> Messages will be serialized into an array of bytes by Producer Microservice
+ => Then it will be sent over the network and stored in a topic as a byte array
+ -> When Consumer Microservices receive the message, the payload will be deserialized into a destination data format
+🧨⚠️🤯 Ideally, event object should contain all the needed information about the event that the consumer might require
+However, if the size of the event becomes very large consider optimizing it
+e.g. Use a link to image/video instead of actually serializing an entire image
+
+¬
+
+Kafka Message
+[ key | Event | Timestamp | Headers | ...]
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Topic and Partitions
+=======================================================================================================================================
+In this lecture we'll discuss about Kafka topic...
+
+Topic is the place where Kafka stores all published messages.
+When a Microservice publishes an event. Instead of sending that event directly to a target microservice
+ -> Kafka Producer will store this events in Kafka topic.
+ -> Microservices that are interested in receiving these events. They will read these events from Kafka topic.
+
+
+~
+
+
+Each Kafka Topic will have a unique name.
+When working with the topic, you will refer to it by its name.
+
+Topics are partitioned and each partition is replicated across multiple Kafka servers for durability.
+This way, even if there is an issue with one Kafka server, you still have your data stored on other Kafka servers.
+
+Having Topics partitioned is very useful  
+✅ Consumer Microservices can read data from topic partitions in parallel
+✅ This increase the throughput of our application
+✅ We can horizontally scale our application
+
+
+
+You'll specify the number of partitions of a Kafka Topic at creation time
+Once the topic is created you can increase the number of partitions, however decreasing it is NOT allowed
+
+Kafka Topic is a logical concept in Apache Kafka, but each partition is actually a small storage unit that stores data
+Each partition looks like a table row. Each row has cells. And here is where data is stored.
+Each cell in a row has a number. This number is called offset.
+
+🧐🕵️🔎 Each event is added to a new partition offset (Starting from zero to N)
+ -> New entry is always added to the end of the partition
+ => Once the entry is persisted the row offset is increased by one
+
+🧨⚠️🤯 Event Data stored in a Topic Partition, it is immutable.
+ -> Once you store an event into a partition, you cannot change it, you cannot delete it, and you cannot update it.
+ => It remains there and does NOT get deleted
+🧐🕵️🔎 By default, Kafka Topic is configured to retain events for seven days, but this value can change through configuration properties 
+ -> You can change this value and you can make Kafka topics keep data for as long as you need it.
+
+
+           (Kafka Topic - product-created-event-topic)
+Partition0   0 | 1 | 2 | 3 | 4 | 5 | n 
+Partition1   0 | 1 | 2 |             n
+Partition2   0 | 1 | 2 | 3 | 4 |   | n
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Ordering of Events in Apache Kafka
+=======================================================================================================================================
+When publishing events towards Kafka Topic...
+If no keyID is defined, Kafka will select the partition randomly
+-> Since consumers read events in parallel. There is no guarantee in what order Consumers will receive those events
+-> This could be a problem if there is any expectation in the order events should be processed.
+
+✅ To solve this we have to send events with a message key
+This way, all events I send with message Key, Kafka will store them in the same partition
+
+🧐🕵️🔎 Notice Kafka applies a hash function to the message key 
+ -> So, it always will use the same partition when publishing the events
+
+
+
+
+
+~
+
+
+
+
+
+❓❓❓ Quiz: Kafka Topics, Partitions and Messages
+Quiz 2|6 questions
+========================================================
+
+📝 Question 1:
+What is a Kafka Topic primarily used for in the Kafka architecture❓
+[ ] Data processing and transformation
+✅ Organizing streams of messages for publish-subscribe systems
+[ ] Storing metadata about Kafka Clusters
+~
+Kafka Topics are used to group/organize and label your data streams, so that you can easily send and receive data from them. 
+For example, you can have a topic for weather data, and another topic for traffic data. Producers can send data to any topic they want, and consumers can subscribe to any topic that they are interested in.
+
+📝 Question 2:
+What does a Partition within a Kafka Topic represent❓
+[ ] A separate Kafka cluster
+✅ A division in the topic for load balancing and parallel processing
+[ ] A unique identifier for message tracking
+~
+A topic is a category or a log for a stream of data.
+Partitions are used to split a topic into smaller pieces, so that more than one server or consumer can handle the data at the same tipe. This helps to balance the workload and speed up the processing.
+
+
+📝 Question 3:
+You can increase the number of partitions in a Kafka topic to scale. But once set, partitions can’t be reduced
+✅ True
+[ ] False
+~
+The number of partitions can only be increased, decreasing the number of partitions is not possible
+
+
+📝 Question 4:
+How does Kafka ensure message ordering in a Topic Partition❓
+[ ] By timestamping each message
+✅ By appending messages in the order they are sent within each partition
+[ ] By the size of the messages
+~
+Kafka appends messages in the order they are sent within each partition. This means that the first message sent to a partition will be the first message read from that partition, and so on. Kafka does not use timestamps, random algorithms, or message size to order messages in a partition. Kafka only cares about the arrival time of messages from the producer.
+
+
+
+📝 Question 5:
+Can a single Kafka Topic have multiple Partitions❓
+✅ True
+[ ] False
+~
+A Kafka Topic is like a folder where you can store and organize your data. A Kafka Topic can be divided into multiple smaller subfolders, which can be on different servers. This helps to distribute the workload and speed up the processing.
+
+
+📝 Question 6:
+How does Kafka ensure message ordering across partitions❓
+[ ] By using a global offset for all messages in a topic
+[ ] By assigning a unique timestamp to each message in a topic
+✅ By using a key for each message and partitioning by the hash of the key
+~
+Kafka uses keys to ensure messages ordering across partitions. 
+A key is an optional attribute of a message that can be used to group messages by some criteria. For example, you can use a user ID as a key to group messages by the same user. Kafka uses a hash function to map each key to a partition. This way, all messages with the same key will go to the same partition, and will be ordered by their arrival time from the producer.
+
+
+
+
+
+
+
+
+
+
+✏️>>> Role play: Meeting with a technical interviewer
+=======================================================================================================================================
+
+
+📝 Scenario
+-----
+You are a candidate that will go for an interview with a technical interviewer. 
+You will be asked several questions relating to what you have learned before & these questions are usually asked when you are applying for an Apache Kafka developer.
+
+Remember that the answers to the questions have been provided in the learning videos or in the quizzes before. Do not go out of topic so that you will have enough spare time and try as best as you can to describe each questions asked.
+
+At this stage, you will not be asked any questions relating to Event-Driven Communication or Apache Kafka.
+
+
+~
+
+
+📝 Kristina (AI Character)
+-----
+Kristina is a hiring manager but she has a deep understanding in how to create  Microservices that use Apache Kafka.
+Her job is to ask a candidate questions relating to the goals of this role play and to make sure they understand them. She will not go out of topic or outside of the goals scopes. She will not answer the questions herself.
+
+If a candidate is mistaken in answering a question or if the candidate does not have a clue or idea of what the answer is, she will ask them a follow up question that will help them realize the correct answer. If a candidate is still unable to provide the correct answer then she will provide correct answer so that the candidate will be able to understand the answer to the question.
+
+At this stage, she will not ask any questions relating to Event-Driven Communication or Apache Kafka.
+
+
+~
+
+
+📝 Your goals
+-----
+ o Goal 1.  Demonstrate understanding of what is Apache Kafka primarily used for
+ o Goal 2.  Demonstrate understanding of Kafka topics and partitions
+ o Goal 3.  Demonstrate understanding of whether it is possible to increase or decrease a partition number
+ o Goal 4.  Demonstrate understanding of the differentiate between Kafka producer and a consumer
+ o Goal 5.  Demonstrate understanding of how to preserve Kafka message ordering when updating data in a database
+
+
+
+🧐 What is Apache Kafka❓
+~~~~~~~~~~~~~~~
+Apache Kafka is primarily a distributed event streaming platform. 
+It's used for building real-time data pipelines and streaming applications.
+It helps manage and process huge amounts of data in a highly fault-tolerant and scalable way. 
+
+
+🧐 What a Kafka topic is and why partitions are important❓
+~~~~~~~~~~~~~~~
+A Kafka topic is essentially a category or feed name where messages are stored, and partitions are subdivisions of these topics.
+This subdivision helps in parallelism, meaning multiple consumers can read simultaneously, and the system can scale effectively.
+
+
+🧐 Can the number of partitions for a Kafka topic be changed after the topic is created❓
+~~~~~~~~~~~~~~~
+Partition numbers can indeed be increased for scalability, but decreasing partitions is not supported because it could cause data loss and inconsistency.
+
+
+🧐 What's the difference between a Kafka producer and a Kafka consumer❓
+~~~~~~~~~~~~~~~
+Producers send or produce data to Kafka topics, 
+while consumers fetch or process those events, multiple consumers can subscribe to a single topic, either independently or as part of a group.
+
+
+🧐 How to preserve message order when updating data in a database using Kafka❓
+~~~~~~~~~~~~~~~
+By using a consistent key, such as an ID, messages with the same key will always be sent to the same partition. 
+Since Kafka maintains order within partitions, this guarantees that the order is preserved when reading those messages
+Perfect for scenarios like database updates!
+
+
+~
+
+🔥 Goal 1 - Demonstrate understanding of what is Apache Kafka primarily used for
+============
+✅ Strengths
+You provided a good start by mentioning Kafka as a distributed platform and its data processing capabilities.
+
+⚠️ Areas for improvement
+You could refine your explanation to emphasize Kafka as a distributed event streaming platform used for real-time data pipelines and streaming applications.
+
+✏️ Actionable tips
+When explaining the primary use case of Kafka, try to incorporate terms like 'real-time event streaming' and 'distributed system' to make your answer more precise.
+
+
+...
+
+
+🔥 Goal 2 - Demonstrate understanding of Kafka topics and partitions
+============
+✅ Strengths
+You explained Kafka topics and partitions comprehensively, covering how topics organize events and how partitions enable parallel reading.
+
+⚠️ Areas for improvement
+Expanding on the implications of partitions for system scalability and fault tolerance could add depth to your answer.
+
+✏️ Actionable tips
+Consider elaborating on how partitions enable Kafka's scalability and how the ordering within a partition is maintained.
+
+
+...
+
+
+🔥 Goal 3 - Demonstrate understanding of whether it is possible to increase or decrease a partition number
+============
+✅ Strengths
+You correctly stated that partitions can be increased but not decreased due to risks like data loss.
+
+⚠️ Areas for improvement
+Adding some context about the practical implications of increasing partitions, such as handling more throughput or parallelism, could enhance your answer.
+
+✏️ Actionable tips
+Whenever discussing technical limits like partition changes, consider linking them to use-case scenarios for better application understanding.
+
+
+...
+
+
+🔥 Goal 4 - Demonstrate understanding of the differentiate between Kafka producer and a consumer
+============
+✅ Strengths
+Your explanation clearly described the roles of producers and consumers in the Kafka ecosystem.
+
+⚠️ Areas for improvement
+Including examples of scenarios involving multiple consumers or consumer groups could make your explanation more relatable.
+
+✏️ Actionable tips
+When differentiating components like producers and consumers, try to mention how they interact within real-world scenarios.
+
+
+...
+
+
+🔥 Goal 5 - Demonstrate understanding of how to preserve Kafka message ordering when updating data in a database
+============
+✅ Strengths
+Your explanation accurately covered the use of keys to maintain message ordering through consistent partition assignment.
+
+⚠️ Areas for improvement
+You may further explore how ordering is critical in specific use cases, like financial transactions or log processing.
+
+✏️ Actionable tips
+Practice mentioning scenarios where message ordering is crucial and how Kafka's design fulfills those needs.

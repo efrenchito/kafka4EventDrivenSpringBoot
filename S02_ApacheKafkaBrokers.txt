@@ -1,0 +1,529 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgement & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handle Deserializer Errors
+📝 S11 : Kafka Consumer - Exceptions and Retries
+📝 S12 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S13 : Kafka Consumer - Idempotency
+📝 S14 : Apache Kafka and Database Transactions
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 02 - Apache Kafka Broker
+=======================================================================================================================================
+
+🚀 What is Apache Kafka Broker❓
+=======================================================================================================================================
+You can think of Kafka Broker as...
+📝 Opt#1 - A Kafka Server, a server that runs Kafka processes.
+📝 Opt#2 - Kafka Broker is a program that runs on a Computer (Physical / VM) that you want to work as a Kafka Server
+           ...so, it can run on any Cloud Provider if you need to (AWS|GCP|Azure|...)
+
+🧐🕵️🔎 To make your system more resilient you can define multiple Kafka Brokers in a Cluster
+Behind the scenes.
+ -> These brokers work together to make sure that your events are stored reliably.
+ -> There will be one broker that will act as a leader, and all other brokers will act as followers.
+...
+Each of these brokers hosts Kafka topics, and each Kafka topic stores events in partitions.
+ -> The leader will handle all read and write requests for the partitions,
+ -> While followers will passively replicate leader's data.
+
+Leader and Follower Broker Roles can change dynamically are not fixed to a single Server.
+ -> If a leader goes down for some reason, one of the follower brokers will become a new leader and will continue serving requests.
+
+
+So Kafka Broker is a software application that you will run on one or more computers.
+Kafka broker will handle all the work to:
+  -> Accept messages from producer
+  -> Store it reliably in topic partitions
+  -> Replicate it across other brokers in the cluster
+  -> Enable Consumer microservices to read events from topic partitions
+
+
+🧨⚠️🤯 Kafka broker is customizable and you can configure its behavior using configuration file.
+
+
+~
+
+
+🚀 Leader and Followers roles
+=======================================================================================================================================
+A leader is responsible for handling all write and read requests for partitions in a topic.
+Followers replicate data from the leader in exact order it was written, maintaining data consistency across cluster.
+
+Having multiple brokers in the cluster allows you to have more followers, and this helps you to ensure high availability of the data.
+Follower allos you scale your Kafka Cluster Horizontally
+
+
+~
+
+
+❓❓❓ Quiz: Kafka Broker
+Quiz 3|6 questions
+=======================================================================================================================================
+Question 1:
+What is the primary role of a broker in Apache Kafka?
+✅ To store, manage, and distribute messages in the Kafka messaging system
+[ ] To connect Producers and consumers directly
+[ ] To encrypt / decript messages
+~
+A Kafka Broker is an Apache Kafka Component that stores, manages, and distributes messages in the Kafka messaging system.
+A broker hosts some set of partitions and handles incoming requests to write new events to those partitions between other brokers.
+This is the main function of a broker, as it enables Kafka to provide high-throughput, low latency, and fault-tolerant data delivery.
+
+
+Question 2:
+How does Kafka ensure message durability?
+[ ] By storing all mesagges in the system memory
+✅ By replicating messages across multiple brokers
+[ ] By compressing messages
+~
+Kafka ensures message durability through replication. 
+Each message published to a Kafka topic can be replicated across multiple brokers.
+This means that even if one broker failes, the data is still available on other brokers.
+Replication is a key feature in Kafka that ensures high availability and durability of data.
+
+
+Question 3:
+What happens when a Kafka broker goes down?
+[ ] All messages in the broker are immediately lost
+✅ Kafka redistributes the load to other brokers
+[ ] The entire Kafka cluster becomes inoperable
+~
+If a broker in a Kafka cluster goes down, Kafka redistributes the workload 
+among the remaining brokers. This includes reassigning the leader 
+for the partitions that were on the failed broker.
+Kafka's distributed nature allow it to handle failures gracefully and maintain continuout operation
+
+
+Question 4:
+What is the role of a Leader broker in a Kafka cluster?
+[ ] To replicate data and follow instructions from followers
+✅ To handle all read and write requests for a specific partition,
+[ ] To coordinate the configuration of the Kafka cluster
+
+
+Question 5:
+What is the role of a Follower broker in a Kafka cluster?
+[ ] To handle all read and write requests for the assigned partitions
+✅ To replicate data from the leader broker for the assigned partitions
+[ ] To manage the cluster configuration and broker registration
+~
+The primary role of a follower broker in a Kafka cluster is to replicate data 
+from the leader broker for the assigned partitions. Follower brokers continually fetch data from 
+the leader for each partition they are assigned to follow. This replication is critical for ensuring
+data redundancy and high availability. In case the leader broker fails, 
+one of these followers can be elected as the new leader, ensuring that the partition remains available and no data is lost
+
+
+Question 6:
+What happens when a leader broker for a partition becomes unavailable?
+[ ] All data in the partition is temporarily inaccessible
+✅ A follower broker is automatically elected as the new leader,
+[ ] The partition is removed from the Kafka cluster
+~
+Kafka's high availability design includes the feature of automatic leader election.
+If the current leader broker for a partition becomes unavailable, one of the follower brokers, which has been replicating the data, is elected as the new leader.
+This ensures continuout availability and accessibility of the partition.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Start single Apache Kafka broker with KRaft
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+🧐🕵️🔎 KRaft is the name of consensus protocol that Kafka uses to coordinate the metadata changes of Kafka Brokers 
+ -> Inside 'kraft' folder there are three configuration files: broker.properties  controller.properties  server.properties
+    o broker.properties:  Contains configuration for a server that acts as broker
+        Brokers are responsible for storing and serving data for topics and partitions
+    o controller.properties: Contains configuration for a server that acts as controller
+        Controllers are responsible of managing the cluster metadata and coordinating the leader election for partitions
+    o server.properties: Contains configuration for a server that acts as both Controller and Broker
+
+[terminal]
+$ ls {WORKSPACE}/kafka/config/kraft
+broker.properties  controller.properties  server.properties
+...
+$ ./bin/kafka-storage.sh random uuid
+{UUID}
+$ ./bin/kafka-storage.sh format -t {UUID} -c config/kraft/server.properties
+Formatting /tmp/kraft-combined-logs with metadata.version 3.6-IV2
+$ ./bin/kafka-server-start.sh config/kraft/server.properties
+
+🧨⚠️🤯 By default config/kraft/server.properties contains basic default configuration properties which is enough for development purposes
+ => However if you want to run more than one Kafka server or if you want to run it in a Production environment this server.properties file needs to be updated
+=======================================================================================================================================
+There are two ways of starting Apache Kafka
+ o Zookeeper - Old way of doing it (Deprecated)
+ o KRaft     - The new way of work with Kafka
+
+
+[terminal]
+$ cd {WORKSPACE}
+$ cd kafka
+$ ls
+LICENSE    bin      libs    site-docs
+NOTICE   💥config   licenses
+$ ls config
+..  💥kraft  ...  zookeeper.properties
+$ ls config/kraft
+broker.properties  controller.properties  server.properties
+
+🧐🕵️🔎 KRaft is the name of consensus protocol that Kafka uses to coordinate the metadata changes of Kafka Brokers 
+ -> Inside 'kraft' folder there are three configuration files: broker.properties  controller.properties  server.properties
+    o broker.properties:  Contains configuration for a server that acts as broker
+        Brokers are responsible for storing and serving data for topics and partitions
+    o controller.properties: Contains configuration for a server that acts as controller
+        Controllers are responsible of managing the cluster metadata and coordinating the leader election for partitions
+    o server.properties: Contains configuration for a server that acts as both Controller and Broker
+
+
+[terminal]
+$ cd {WORKSPACE}
+$ cd kafka
+$ ls
+LICENSE  💥bin      libs    site-docs
+NOTICE     config   licenses
+$ ls bin
+...
+kafka-storage.sh
+
+
+~
+
+[terminal]
+$ ./bin/kafka-storage.sh random uuid
+{UUID}
+$ ./bin/kafka-storage.sh format -t {UUID} -c config/kraft/server.properties
+Formatting /tmp/kraft-combined-logs with metadata.version 3.6-IV2
+$ ./bin/kafka-server-start.sh config/kraft/server.properties
+
+🧐🕵️🔎 By default config/kraft/server.properties contains basic default configuration properties which is enough for development purposes
+ => However if you want to run more than one Kafka server or if you want to run it in a Production environment this server.properties file needs to be updated
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Multiple Kafka Broker : Configuration Files
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+To run more than one Kafka server, we need to create new configuration files
+To start more than one Kafka server, we need to create a server.properties file for each new server
+
+
+[✏️#~/..server-1.properties]
+process.roles=broker,controller
+node.id=1
+listeners=PLAINTEXT://:9092, CONTROLLER://:9093
+controller.quorum.voters=1@localhost:9093,2@localhost:9095,3@localhost:9097
+advertised.listeners=PLAINTEXT://:9092
+log.dirs=/tmp/server-1/kraft-combined-logs/
+
+[✏️#~/..server-2.properties]
+process.roles=broker,controller
+node.id=2
+listeners=PLAINTEXT://:9094, CONTROLLER://:9095
+controller.quorum.voters=1@localhost:9093,2@localhost:9095,3@localhost:9097
+advertised.listeners=PLAINTEXT://:9094
+log.dirs=/tmp/server-2/kraft-combined-logs/
+
+[✏️#~/..server-3.properties]
+process.roles=broker,controller
+node.id=3
+listeners=PLAINTEXT://:9095, CONTROLLER://:9097
+controller.quorum.voters=1@localhost:9093,2@localhost:9095,3@localhost:9097
+advertised.listeners=PLAINTEXT://:9096
+log.dirs=/tmp/server-3/kraft-combined-logs/
+
+~
+
+🧨⚠️🤯 On Windows, instead of 'localhost', we might need to use [::1]
+ -> listeners=PLAINTEXT://[::1]:9092, CONTROLLER://[::1]:9093
+ -> controller.quorum.voters=1@[::1]:9093
+ -> advertised.listeners=PLAINTEXT://[::1]:9092
+ ...
+🧐🕵️🔎 Since all servers are running in the same host machine
+ -> listeners need to use a different PORT number
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Multiple Kafka Broker : Storage Folders
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+Each Kafka Cluster needs a set of storage directories.
+These storage directories are local directories for each node
+This is where Kafka cluster stores server logs, metadata and snapshots
+...
+So, we need to define the cluster ID for each Server 
+
+[terminal]
+$ ./bin/kafka-storage.sh random uuid
+{UUID}
+$ ./bin/kafka-storage.sh format -t {UUID} -c config/kraft/server-1.properties
+Formatting /tmp/kraft-combined-logs with metadata.version 3.6-IV2
+$ ./bin/kafka-storage.sh format -t {UUID} -c config/kraft/server-2.properties
+Formatting /tmp/kraft-combined-logs with metadata.version 3.6-IV2
+$ ./bin/kafka-storage.sh format -t {UUID} -c config/kraft/server-3.properties
+Formatting /tmp/kraft-combined-logs with metadata.version 3.6-IV2
+
+
+🧐🕵️🔎 $ ./bin/kafka-storage.sh format -t {UUID} -c config/kraft/server.properties
+This command is used to format the local storage of a Kafka broker when running in KRaft mode
+📌 Specifically, this command:
+ -> Initializes the broker's log directories with metadata required to run in KRaft mode.
+ -> Sets a unique Cluster ID.
+ -> Must be run before starting the broker for the first time, otherwise it will override any stored data
+
+
+~
+
+
+
+
+
+🚀 Starting multiple Kafka broker with KRaft
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+🧐🕵️🔎 To start a Kafka server with KRaft 
+ -> We can use the kafka-server-start.sh file passing as argument the path of server.properties file
+...
+$ ./bin/kafka-server-start.sh config/kraft/{server.properties}
+=======================================================================================================================================
+
+[terminal1]
+$ ./bin/kafka-server-start.sh config/kraft/server-1.properties
+
+[terminal2]
+$ ./bin/kafka-server-start.sh config/kraft/server-2.properties
+
+[termina3]
+$ ./bin/kafka-server-start.sh config/kraft/server-3.properties
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Stopping Apache Kafka broker
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+Before shutting down your Kafka Servers...
+It's a good practice to stop all running producers and consumers
+
+
+📝 Stop Producers and Consumers
+-----
+This will also help you
+ ->  Avoid losing messages 
+ ->  Avoid error messages
+
+🧐🕵️🔎 Because if you don't stop your Kafka Servers.. 
+  o Producers might keep on sending messages to those offline servers
+  -> There is a chance that you lose those messages
+
+  o Helps you to avoid error in your system
+  -> If Producers/Consumers keep on interacting with the server that is going down
+  => This will cause exceptions kicking in the exception handling or retry logic on your application
+     ..which might complicate everything putting your system into survival or recovery mode 
+
+
+
+📝 Stopping Kafka Server
+-----
+ ⚠️ Control + C   (Control shutdown)
+    This is NOT the best way to do it, Kafka server might NOT complete all graceful shutdown tasks
+    e.g. Closing log segments
+ ✅ kafka-server-stop.sh   (Graceful shutdown)
+    Allows Kafka Server to execute 
+     -> shutdown hooks 
+     -> Properly close down network connections
+     -> Flush and commit any in-memory data to disk
+     -> Close log-segments
+     -> Perform any necessary cleanup process
+
+
+🧐🕵️🔎 Control and Graceful shutdown of Kafka Server are enabled by default
+-> Control shutdown can be controlled via server.properties  -> controlled.shutdown.enable=true
+
+[terminal]
+$ ./bin/kafka-server-stop.sh
+
+🧨⚠️🤯 Notice this command  './bin/kafka-server-stop.sh' will stop all instances running
+ -> There is NO alternative to stop an specific instance
+
+
+
+
+
+~
+
+
+
+
+
+✏️>>> Role play: Meeting with a technical interviewer
+=======================================================================================================================================
+
+
+📝 Scenario
+-----
+You are a candidate that will go for an interview with a technical interviewer. 
+You will be asked several questions relating to what you have learned before & these questions are usually asked when you are applying for an Apache Kafka developer.
+
+Remember that the answers to the questions have been provided in the learning videos or in the quizzes before. Do not go out of topic so that you will have enough spare time and try as best as you can to describe each questions asked.
+
+At this stage, you will not be asked any questions relating to Event-Driven Communication or Apache Kafka.
+
+
+~
+
+
+📝 Kristina (AI Character)
+-----
+Kristina is a hiring manager but she has a deep understanding in how to create  Microservices that use Apache Kafka.
+Her job is to ask a candidate questions relating to the goals of this role play and to make sure they understand them. She will not go out of topic or outside of the goals scopes. She will not answer the questions herself.
+
+If a candidate is mistaken in answering a question or if the candidate does not have a clue or idea of what the answer is, she will ask them a follow up question that will help them realize the correct answer. If a candidate is still unable to provide the correct answer then she will provide correct answer so that the candidate will be able to understand the answer to the question.
+
+At this stage, she will not ask any questions relating to Event-Driven Communication or Apache Kafka.
+
+
+~
+
+
+📝 Your goals
+-----
+ o Goal 1. Demonstrate understanding of what Kafka broker is
+ o Goal 2. Demonstrate understanding of what Kafka cluster is
+ o Goal 3. Demonstrate understanding of the concepts of leader and follower in the context of Kafka brokers
+ o Goal 4. Demonstrate understanding of how Kafka distributes topic partitions across brokers
+ o Goal 5. Demonstrate understanding of what happens to a Kafka cluster and its data availability when one broker in a three-broker cluster goes down
+
+
+
+What is a Kafka Broker❓
+It's a server that stores data by managing topics and partitions. 
+It handles producer and consumer requests. So it stores pushed events send by producers and it also takes care of delivering the messages to consumers. 
+
+How do you think Kafka ensures scalability and fault tolerance when using multiple brokers together❓
+Leaders handle the producer/consumer requests, while followers replicate their data to maintain durability and support fault tolerance. 
+If a leader fails, Kafka indeed elects a new leader from the followers to take over seamlessly. 
+
+How does Kafka distribute topic partitions across these brokers❓
+Kafka distributes partitions across brokers to balance load and allow parallel processing. 
+The replication factor works by duplicating the data across brokers for fault tolerance. 
+Also, the partitioning often involves hashing keys to decide the partition placement. This makes distribution really efficient. 
+
+What happens to data availability in a three-broker cluster if one broker fails❓
+When a broker in a replicated Kafka cluster goes down, the partition's leader role can be reassigned to a follower to maintain availability, 
+while the replication ensures no data loss. 
+...
+Kafka elects a new leader from the followers to maintain availability. 
+As for followers, the replication mechanism ensures data is still accessible and the system remains operational 
+... as long as the replication factor is appropriately configured. 
+ 
+
+🧠 balance load | parallel processing | data availability | fault tolerance
+~
+
+
+🔥 Goal 1 - Demonstrate understanding of what Kafka broker is
+✅ Strengths
+You correctly identified that a Kafka broker handles producer and consumer requests and deals with topics and partitions.
+
+⚠️ Areas for improvement
+Your explanation could be expanded to include how brokers store data and their overall responsibility within the cluster.
+
+✏️ Actionable tips
+Review the extended role of Kafka brokers in message storage and lifecycle to provide a more comprehensive explanation.
+
+...
+
+🔥 Goal 2 - Demonstrate understanding of what Kafka cluster is
+✅ Strengths
+You demonstrated understanding by connecting brokers, leaders, and fault tolerance to the cluster.
+
+⚠️ Areas for improvement
+Consider mentioning how multiple brokers are coordinated and their interdependence in ensuring load balancing.
+
+✏️ Actionable tips
+Try to describe how Kafka clusters coordinate brokers for cohesive operation.
+
+...
+
+🔥 Goal 3 - Demonstrate understanding of the concepts of leader and follower in the context of Kafka brokers
+✅ Strengths
+You explained well how leaders handle requests while followers replicate data, and the role-switching for fault tolerance.
+
+⚠️ Areas for improvement
+You could delve slightly deeper into leader-follower replication specifics and election mechanics.
+
+✏️ Actionable tips
+Study leader election algorithms and scenario effects on performance to expand your explanation.
+
+...
+
+🔥 Goal 4 - Demonstrate understanding of how Kafka distributes topic partitions across brokers
+✅ Strengths
+You mentioned replication and hashing as a means to distribute partitions efficiently.
+
+⚠️ Areas for improvement
+While hash-based partitioning was correctly mentioned, clarity on balancing load across brokers can be improved.
+
+✏️ Actionable tips
+Review Kafka's partition allocation strategy and how brokers are assigned partitions dynamically.
+
+...
+
+🔥 Goal 5 - Demonstrate understanding of what happens to a Kafka cluster and its data availability when one broker in a three-broker cluster goes down
+✅ Strengths
+You rightly noted how leaders are promoted after a failure and how replication supports availability.
+
+⚠️ Areas for improvement
+The explanation lacked a deeper mention of replication factor and its critical role under broker failures.
+
+✏️ Actionable tips
+Familiarize yourself with cluster configurations like replication factor to better discuss resilience.
