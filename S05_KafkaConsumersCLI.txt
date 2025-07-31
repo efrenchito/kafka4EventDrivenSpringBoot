@@ -1,0 +1,247 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgement & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handle Deserializer Errors
+📝 S11 : Kafka Consumer - Exceptions and Retries
+📝 S12 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S13 : Kafka Consumer - Idempotency
+📝 S14 : Apache Kafka and Database Transactions
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 05 - Kafka Consumers - CLI
+=======================================================================================================================================
+
+🚀 Introduction to Kafka Consumers - CLI
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+Kafka Console Consumer Allow us to consume or read messages from a particular Kafka topic
+The main use of Kafka console consumer is to fetch or display messages from Kafka topic to your terminal.
+
+Notice when reading Kafka messages you can:
+ o Read new messages only
+ o Read all messages from the beginning
+
+...
+
+[terminal]
+$ cd {WORKSPACE}
+$ cd kafka
+$ ls
+LICENSE  💥bin      libs    site-docs
+NOTICE   config   licenses
+$ ls 
+.. kafka-console-consumer.sh
+
+
+$ ./bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic my-topic --from-beginning
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Consuming messages from Kafka Topic from the beginning
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+🧠 --from-beginning
+
+Before trying to create a Kafka Topic ensure Kafka Server is up and running
+[terminal]
+$ ./bin/kafka-server-start.sh config/kraft/server-1.properties
+$ ./bin/kafka-server-start.sh config/kraft/server-2.properties
+$ ./bin/kafka-server-start.sh config/kraft/server-3.properties
+...
+[terminal]
+$ ./bin/kafka-console-producer.sh --bootstrap-server localhost:9092,localhost:9094 --topic my-topic
+> Message1
+> Message2
+> 
+
+$ ./bin/kafka-console-consumer.sh  --bootstrap-server localhost:9092,localhost:9094 --topic my-topic 💥--from-beginning
+Message1
+Message2
+|
+=======================================================================================================================================
+
+[terminal]
+$ cd {WORKSPACE}
+$ cd kafka
+$ ls
+LICENSE  💥bin      libs    site-docs
+NOTICE   config   licenses
+$ ls 
+.. kafka-console-consumer.sh
+
+$ .kafka/bin/kafka-console-consumer.sh  --bootstrap-server localhost:9092,localhost:9094 --topic my-topic 💥--from-beginning
+Message1
+Message2
+|
+
+🧐🕵️🔎 Notice that the kafka-console-consumer.sh script after reading the messages don't exit
+ -> It's still running and waiting for more messages to run
+ => As soon as new messages arrive to this Topic, it will read them right away
+
+🧨⚠️🤯 Notice that when a Consumer reads a message it won't be deleted from the Topic
+
+🧐🕵️🔎 As soon as a new message is pushed to the Topic 
+ -> All consumers subscribed to that Topic will get that message
+
+...
+
+🧐🕵️🔎 Consumers in this example are running in Terminal Windows
+ -> However Consumers can be external applications like Spring Boot APIs, etc...
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Consuming new Kafka Messages only
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+In order to avoid reading all messages, and only read the new ones
+❌ Remove the flag --from-beginning
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Consuming Key:Value pair messages from Kafka Topic
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+🧠 --property "print.key=true" --property "print.value=true"
+=======================================================================================================================================
+When dealing with key:value pair messages..
+🧐🕵️🔎 There is nothing you need to do on the Consumer side, is the Producer responsible on sending the messages in that format
+For that we need to add to producer properties "parse.key=true" & "key.separator=:"
+
+$ ./bin/kafka-console-producer.sh --bootstrap-server localhost:9092,localhost:9094 --topic 💥my-topic
+--property "parse.key=true" --property "key.separator=:"
+> key1 Message3
+
+🧨⚠️🤯 By default Consumers will only display the Value part.
+This is because the properties defined to print the key part and the value part aswell, are defined as follows:
+print.key=false
+print.value=true
+
+
+$ .kafka/bin/kafka-console-consumer.sh  --bootstrap-server localhost:9092,localhost:9094 --topic my-topic 
+--property "print.key=true"💥 --property "print.value=true"💥  --from-beginning
+null Message1
+null Message2
+key1 Message3
+|
+
+🧨⚠️🤯 Notice we can hide values and print key data only
+$ .kafka/bin/kafka-console-consumer.sh  --bootstrap-server localhost:9092,localhost:9094 --topic my-topic 
+--property "print.key=true" --property "print.value=false"💥  --from-beginning
+null
+null
+Message3
+|
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Consumming Kafka Messages in Order
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+🧐🕵️🔎  Kafka Topic is split into multiple partitions.
+To determine which partition to choose to store a message, Kafka will use a hash of a message key.
+If there is no key, then Kafka will equally distribute messages across multiple partitions using round robin algorithm.
+
+
+🧨⚠️🤯 If you want to read messages in the order they were stored, these messages need to use exactly the same key.
+If messages have the same key, they will be stored in the same partition and they will be read in the same order.
+
+
+[terminal(1)]
+$ cd {WORKSPACE}
+$ cd kafka
+$ ls
+LICENSE  💥bin      libs    site-docs
+NOTICE   config   licenses
+$ ls 
+..  kafka-console-producer.sh  kafka-console-consumer.sh
+
+$ ./kafka/bin/kafka-console-producer.sh --create --bootstrap-server localhost:9092 --topic ordered-messages --partitions 3 --replication-factor 3
+Created topic ordered-messages
+
+$ ./kafka/bin/kafka-console-producer.sh  --boostrap-server localhost:9092 --topic ordered-messages 
+--property "parse.key=true" --property "key.separator=:"
+> 1:First
+> 1:Second
+> 1:Third
+> 1:Fourth
+> 1:Fifth
+> 1:Sixth
+> a:a
+> b:b
+> c:c
+> d:d
+> e:e
+> f:f
+> g:g
+
+[terminal(2)]
+$ ./kafka/bin/kafka-console-consumer.sh --boostrap-server localhost:9092 --topic ordered-messages 
+--from-beginning💥 --property "print.key=tue"💥
+1    First
+2    Second
+3    Third
+4    Fourth
+5    Fifth
+6    Sixth
+f    f
+g    g
+a    a
+c    c
+b    b
+d    d
+e    e
+
+
+Now notice that a list of messages with the same key. They are all ordered.
+And those messages that were stored with a different key.
+Even though we send them in order, their order is different when we read them.

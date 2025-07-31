@@ -53,7 +53,6 @@ kafka-topics.sh
  o Send multiple messages from a file
 
 
-
 $ ./bin/kafka-console-producer.sh --bootstrap-server localhost:9092,localhost:9094 --topic 💥my-topic
 
 
@@ -66,7 +65,7 @@ $ ./bin/kafka-console-producer.sh --bootstrap-server localhost:9092,localhost:90
 
 
 
-🚀 Creating a New Kafka Topic
+🚀 Producing Kafka Message without a Key
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 Before trying to create a Kafka Topic ensure Kafka Server is up and running
 [terminal]
@@ -106,3 +105,46 @@ $ ./bin/kafka-console-producer.sh --bootstrap-server localhost:9092,localhost:90
  -> Otherwise the Topic will be created with the default Configuration and that could not match with what you need
 
 
+
+
+
+~
+
+
+
+
+
+🚀 Producing Kafka Message with a Key
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+🧠 --property "parse.key=true" --property "key.separator=:"
+~
+🧐🕵️🔎 Kafka messages sent with a Key, will be stored in the same partition
+ -> Ensuring they are stored in order.
+..
+[terminal]
+$ ./bin/kafka-console-producer.sh --bootstrap-server localhost:9092,localhost:9094 --topic 💥my-topic
+--property "parse.key=true" --property "key.separator=:"
+
+🧐🕵️🔎 When using --property "parse.key=true" Producer expects messages to be in the format of key-value pair
+Then we must specify the separator character via --property "key.separator=:"
+=======================================================================================================================================
+In this lesson, we'll learn how to send a message with a key to Kafka Topic
+Messages and Kafka Topics are stored as Key value pairs.
+When sending messages without a Key, then key will be null.
+
+Kafka messages sent with a Key, will be stored in the same partition
+ -> Ensuring the are stored in order.
+
+When you need to store and read messages in order, you need to use the same key for those messages
+
+
+When using --property "parse.key=true" Producer expects messages to be in the format of key-value pair
+Then we must specify the separator character via --property "key.separator=:"
+
+
+$ ./bin/kafka-console-producer.sh --bootstrap-server localhost:9092,localhost:9094 --topic 💥my-topic
+--property "parse.key=true" --property "key.separator=:"
+> firstName:Sergey 
+
+If we try to send a message without the separator we'll get an Error Message
+> test message  => No key separator found   
