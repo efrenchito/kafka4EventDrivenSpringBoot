@@ -1,0 +1,904 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgment & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handle Deserializer Errors
+📝 S11 : Kafka Consumer - Exceptions and Retries
+📝 S12 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S13 : Kafka Consumer - Idempotency
+📝 S14 : Apache Kafka and Database Transactions
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 07 - Kafka Producer - Acknowledgment & Retries
+=======================================================================================================================================
+
+🚀 Kafka Producer - Acknowledgment Introduction 
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+🧐🕵️🔎 By default Kafka Producer is configured to receive this acknowledgment from Leader broker only
+ -> So, once the Leader Broker stores the message successfully, it sends acknowledgment to Kafka Producer
+ => This configuration allow us to confirm that the message was received and stored
+...
+🧨⚠️🤯 For those escenarios where is critical to ensure our Messages don't get lost
+✅ We can configure your Kafka producer to wait acknowledgment from all In-Sync replicas.
+🔎 If data scenario is NOT critical you can configure Kafka Producer NOT to wait for any acknowledgment at all
+
+[✏️#~/...application.properties]
+spring.kafka.producer.acks=all
+spring.kafka.producer.acks=1
+spring.kafka.producer.acks=0
+
+🧨⚠️🤯 Notice that Kafka Producer will wait for acknowledgment not just from any broker, but only from in-Sync Replicas.
+ -> min.insync.replicas: Minimum number of ISR members that must acknowledge a write for it to be considered committed.
+ -> replica.lag.time.max.ms: Max time a follower can be behind before being removed from ISR.
+...
+What is the difference between Replicas and In-Sync Replicas (ISR)❓
+¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨
+📝 A REPLICA is a copy of a Kafka partition. It can be either a Leader or Follower.
+ -> Includes all brokers that have a copy of the partition’s data — regardless of whether they are up-to-date or not.
+📝 IN-SYNC REPLICAS is the subset of replicas that are fully caught up with the leader.
+=======================================================================================================================================
+
+📝 When Kafka producer sends a message, this message is sent to Kafka Broker. 
+Kafka broker stores this message in Kafka topic. Inside that topic, the Kafka message is stored in one of the partitions. 
+Now, if your Kafka cluster has more than one broker and proper replication-factor configured, then Topic Partitions 
+will be copied over to other brokers as well. In that case, one broker is the leader and it's the first one to receive the Kafka message.
+Kafka Leader receives the message and then it copies that message over to other brokers that act as followers, 
+and those brokers that act as followers they're simply a replica of the Leader Broker.
+
+🧐🕵️🔎 By default Kafka Producer is configured to receive this acknowledgment from Leader broker only
+ -> So, once the Leader Broker stores the message successfully, it sends acknowledgment to Kafka Producer
+ => This configuration allow us to confirm that the message was received and stored
+...
+What if Leader Broker goes down before sharing this message with its followers❓The message will be considered lost 
+To make our system more reliable, we can configure Kafka Producer to expect acknowledgment from more than one broker, 
+This is it must receive acknowledgment NOT only from Leader Broker, but also from all Followers Brokers.
+⚠️ This will make our system work just a little bit slower but more RELIABLE 
+
+🧨⚠️🤯 For those escenarios where is critical to ensure our Messages don't get lost
+✅ We can configure your Kafka producer to wait acknowledgment from all In-Sync replicas.
+🔎 If data scenario is NOT critical you can configure Kafka Producer NOT to wait for any acknowledgment at all
+
+~
+
+spring.kafka.producer.axks=all
+Waits for acknowledgment from all brokers
+...
+spring.kafka.producer.axks=1
+Waits for acknowledgment from the Leader broker only
+...
+spring.kafka.producer.acks=0
+Does NOT wait for any acknowledgment (This makes your system faster but less reliable)
+e.g. Sending Real Time location updates as it might NOT be very criticals
+
+🧨⚠️🤯 Notice that Kafka Producer will wait for acknowledgment not just from any broker, but only from in-Sync Replicas.
+ -> min.insync.replicas: Minimum number of ISR members that must acknowledge a write for it to be considered committed.
+ -> replica.lag.time.max.ms: Max time a follower can be behind before being removed from ISR.
+...
+What is the difference between Replicas and In-Sync Replicas (ISR)❓
+¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨
+📝 A REPLICA is a copy of a Kafka partition. It can be either a Leader or Follower.
+ -> Includes all brokers that have a copy of the partition’s data — regardless of whether they are up-to-date or not.
+📝 IN-SYNC REPLICAS is the subset of replicas that are fully caught up with the leader.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Producer - Retries Introduction 
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+When Kafka Producer sends a Message we could have the following escenarios 👇👇👇
+ o No Response: If the producer is configured with property acks=0
+ o Acknowledgment (ACK) of Successful Storage
+ o Non-Retriable Error: A permanent problem that is unlikely to be resolved by retries
+ o Retriable Error: A temporary problem that can be resolved by the send operation
+...
+🧐🕵️🔎 Kafka itself determines if the error is Retriable or NOT 
+e.g. Retriable     -> Network Error / Leader Broker is temporarily unavailable / There are't enough ISR
+e.g. Non-Retriable -> Message size is too large and exceeds maximum limit
+=======================================================================================================================================
+
+What would happen if one of the (ISR) Followers goes down❓
+The default behavior of Kafka producer in this case is to retry the send operation for a very large number of times, 
+or until the delivery timeout is reached. (Default timeout value is 2 minutes)
+
+When Kafka Producer sends a Message we can have the following escenarios 👇👇👇
+ o No Response: If the producer is configured with property acks=0
+ o Acknowledgment (ACK) of Successful Storage
+ o Non-Retriable Error: A permanent problem that is unlikely to be resolved by retries
+ o Retriable Error: A temporary problem that can be resolved by the send operation
+
+🧐🕵️🔎 Kafka itself determines if the error is Retriable or NOT 
+e.g. Retriable     -> Network Error / Leader Broker is temporarily unavailable / There are't enough ISR
+e.g. Non-Retriable -> Message size is too large and exceeds maximum limit
+
+
+📝 Retries Configuration properties
+-----------
+spring.kafka.producer.retries=10
+The default value of this property is too large (2147483647). Which basically means the producer will retry indefinitely
+.. until the message is delivered  or until the delivery timeout is reached.
+
+spring.kafka.producer.properties.retry.backoff.ms=1000
+How long the producer will wait before attempting to retry a failed request.
+Default value is 100 ms
+(So it helps to avoid repeatedly sending requests in a very tight loop.)
+
+spring.kafka.producer.properties.delivery.timeout.ms=120000
+The maximum time producer can spend trying to deliver the message. 
+Default value is 120000 ms (2 minutes)
+
+-
+🕵️ delivery.timeout.ms >= linger.ms + request.timeout.ms
+spring.kafka.producer.properties.linger.ms=0
+The maximum time in milliseconds that the producer will wait and buffer data before sending a batch of messages.
+The default value is 0
+
+spring.kafka.producer.properties.request.timeout.ms=30000
+The maximum time to wait for a response from the broker after sending a request.
+The default value is 30000 ms
+
+~
+So a higher value of linger property, it can help your producer reduce the number of requests that
+it sends to the broker and increase the size of each request.
+And this can improve the throughput of the producer.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Configuring Producer Acknowledgment in Spring Boot Microservice
+=======================================================================================================================================
+
+[✏️#~/...application.properties]
+server.port=0
+spring.kafka.producer.boostrap-servers=localhost:9092
+spring.kafka.producer.key-serializer=org.apache.kafka.common.serialization.StringSerializer
+spring.kafka.producer.value-serializer=org.springframework.kafka.support.serializer.JsonSerializer
+
+spring.kafka.producer.acks=all   #default => 1
+
+
+
+
+
+~
+
+
+
+
+
+🚀 The min.insync.replicas configuration
+=======================================================================================================================================
+
+[terminal]
+$ cd {WORKSPACE}/kafka
+$ ./bin/kafka-topics.sh --bootstrap-server localhost:9092 
+    --create --topic product-created-events-topic --partitions 3 --replication-factor 3 --config min.insync.replicas=2
+$ ./bin/kafka-topics.sh --bootstrap-server localhost:9092 
+    --create --topic topic2 --partitions 3 --replication-factor 3
+
+$ ./bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe 
+Topic: product-created-events-topic    TopicId: {ID}    PartitionCount: 3    ReplicationFactor:3  Configs: min.insync.replicas=2,segment.bytes=1073741824
+        Topic: product-created-events-topic    Partition: 0    Leader: 3    Replicas: 3,1,2  Isr:  3,1,2
+        Topic: product-created-events-topic    Partition: 1    Leader: 1    Replicas: 1,2,3  Isr:  3,1,2
+        Topic: product-created-events-topic    Partition: 2    Leader: 2    Replicas: 2,3,1  Isr:  2,3,1
+
+Topic: topic2    TopicId: {ID}    PartitionCount: 3    ReplicationFactor:3  Configs: segment.bytes=1073741824
+        Topic: product-created-events-topic    Partition: 0    Leader: 3    Replicas: 3,1,2  Isr:  3,1,2
+        Topic: product-created-events-topic    Partition: 1    Leader: 1    Replicas: 1,2,3  Isr:  3,1,2
+        Topic: product-created-events-topic    Partition: 2    Leader: 2    Replicas: 2,3,1  Isr:  2,3,1
+~
+🧐🔎🕵️ Notice we have two Topics...
+ -> `product-created-events-topic` has the min.insync.replicas configuration setted to  2
+ -> `topic2` has NO that property
+ => Let's update this topic `topic2` and configure the min.insync.replicas value
+
+[terminal]
+$ ./bin/kafka-configs.sh --boostrap-server localhost:9092
+    --alter --entity-type topics  --entity-name topic2 --add-config min.insync.replicas=2
+
+$ ./bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe 
+Topic: product-created-events-topic    TopicId: {ID}    PartitionCount: 3    ReplicationFactor:3  Configs: min.insync.replicas=2,segment.bytes=1073741824
+        Topic: product-created-events-topic    Partition: 0    Leader: 3    Replicas: 3,1,2  Isr:  3,1,2
+        Topic: product-created-events-topic    Partition: 1    Leader: 1    Replicas: 1,2,3  Isr:  3,1,2
+        Topic: product-created-events-topic    Partition: 2    Leader: 2    Replicas: 2,3,1  Isr:  2,3,1
+
+Topic: topic2    TopicId: {ID}    PartitionCount: 3    ReplicationFactor:3  Configs: min.insync.replicas=2,segment.bytes=1073741824
+        Topic: product-created-events-topic    Partition: 0    Leader: 3    Replicas: 3,1,2  Isr:  3,1,2
+        Topic: product-created-events-topic    Partition: 1    Leader: 1    Replicas: 1,2,3  Isr:  3,1,2
+        Topic: product-created-events-topic    Partition: 2    Leader: 2    Replicas: 2,3,1  Isr:  2,3,1
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Trying how the min.insync.replicas config property works
+=======================================================================================================================================
+📝 Run three Kafka Servers (server-1, server-2 and server-3)
+📝 Run Kafka Consumers subscribed to `topic2`
+📝 Run ProductServiceApplication 
+📝 Send Kafka Message via POSTMAN
+📝 Stop Kafka Server #3 and send a new message via POSTMAN
+📝 Stop Kafka Server #2 and send a new message via POSTMAN
+
+
+
+✏️>>> Let's start three Kafka Servers (server-1, server-2 and server-3) 👇👇👇
+-------------------------
+[terminal]
+$ cd {WORKSPACE}
+$ cd kafka
+$ ls
+LICENSE    bin      libs    site-docs
+NOTICE   💥config   licenses
+$ ls config
+..  💥kraft  ...  zookeeper.properties
+$ ls config/kraft
+broker.properties  controller.properties  server.properties  💥server-1.properties  💥server-2.properties  💥server-1.properties
+
+...
+
+[✏️#~/..server-1.properties]
+process.roles=broker,controller
+node.id=1
+listeners=PLAINTEXT://:9092, CONTROLLER://:9093
+controller.quorum.voters=1@localhost:9093,2@localhost:9095,3@localhost:9097
+advertised.listeners=PLAINTEXT://:9092
+log.dirs=/tmp/server-1/kraft-combined-logs/
+
+[✏️#~/..server-2.properties]
+process.roles=broker,controller
+node.id=2
+listeners=PLAINTEXT://:9094, CONTROLLER://:9095
+controller.quorum.voters=1@localhost:9093,2@localhost:9095,3@localhost:9097
+advertised.listeners=PLAINTEXT://:9094
+log.dirs=/tmp/server-2/kraft-combined-logs/
+
+[✏️#~/..server-3.properties]
+process.roles=broker,controller
+node.id=3
+listeners=PLAINTEXT://:9095, CONTROLLER://:9097
+controller.quorum.voters=1@localhost:9093,2@localhost:9095,3@localhost:9097
+advertised.listeners=PLAINTEXT://:9096
+log.dirs=/tmp/server-3/kraft-combined-logs/
+
+...
+
+[terminal]
+$ ./bin/kafka-storage.sh random uuid
+{UUID}
+$ ./bin/kafka-storage.sh format -t {UUID} -c config/kraft/server-1.properties
+Formatting /tmp/kraft-combined-logs with metadata.version 3.6-IV2
+$ ./bin/kafka-storage.sh format -t {UUID} -c config/kraft/server-2.properties
+Formatting /tmp/kraft-combined-logs with metadata.version 3.6-IV2
+$ ./bin/kafka-storage.sh format -t {UUID} -c config/kraft/server-3.properties
+Formatting /tmp/kraft-combined-logs with metadata.version 3.6-IV2
+~
+🧐🕵️🔎 $ ./bin/kafka-storage.sh format -t {UUID} -c config/kraft/{server.properties}
+This command is used to format the local storage of a Kafka broker when running in KRaft mode
+📌 Specifically, this command:
+ -> Initializes the broker's log directories with metadata required to run in KRaft mode.
+ -> Sets a unique Cluster ID.
+ -> Must be run before starting the broker for the first time, otherwise it will override any stored data
+
+...
+
+🧐🕵️🔎 To start a Kafka server with KRaft 
+ -> We can use the kafka-server-start.sh file passing as argument the path of server.properties file
+
+[terminal1]
+$ ./bin/kafka-server-start.sh config/kraft/server-1.properties
+
+[terminal2]
+$ ./bin/kafka-server-start.sh config/kraft/server-2.properties
+
+[termina3]
+$ ./bin/kafka-server-start.sh config/kraft/server-3.properties
+
+
+
+~
+
+
+
+✏️>>> Let's start Kafka Consumer (Subscribed to `topic2`) 👇👇👇
+-------------------------
+[terminal]
+$ ./bin/kafka-topics.sh --bootstrap-server localhost:9092
+    --topic topic2
+
+
+
+~
+
+
+
+✏️>>> Set `topic2` as target Topic for ProductServiceImpl 👇👇👇
+-------------------------
+[✏️#~/...ProductServiceImpl]
+@Service
+public class ProductServiceImpl implements ProductService {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+
+    KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate;
+
+    public ProductServiceImpl(KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate) {
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
+    @Override 
+    public String createProduct(CreateProductRestModel productRestModel) 💥throws Exception💥 {
+        String productId = UUID.randomUUID().toString();
+        //TODO: Persist Product Details into database table before publishing an Event
+
+        ProductCreatedEvent productCreatedEvent = new ProductCreatedEvent(
+            productId,
+            productRestModel.getTitle(),
+            productRestModel.getPrice(),
+            productRestModel.getQuantity()
+        );
+
+        LOGGER.info("Before publishing a ProductCreatedEvent");
+
+        SendResult<String, ProductCreatedEvent> result =
+          kafkaTemplate.send(💥"topic2"💥, productId, productCreatedEvent).get();
+        
+        LOGGER.info("Partition: " + result.getRecordMetadata().partition());
+        LOGGER.info("Topic: " + result.getRecordMetadata().topic());
+        LOGGER.info("Offset: " + result.getRecordMetadata.offset());
+
+        LOGGER.info("***** Returning product id");
+
+        return productId;
+    }
+}
+
+
+~
+
+
+✏️>>> Run ProductServiceApplication  👇👇👇
+[IntelliJ]
+ProductsMicroservice
+  > ▶️ ProductsMicroserviceApplication
+
+
+
+~
+
+
+
+✏️>>> Send Kafka Message via POSTMAN >>>
+-------------------------
+[POSTMAN]
+[POST] http://localhost:{PORT}/products
+Params | Authorization | Headers | ✅Body | Pre-request Script | Tests | Settings
+none | form-data | x-www-form-urlencoded | ✅raw | binary | GraphQL | 💥JSON
+~
+{
+    "title": "iPhone11",
+    "price": 800,
+    "quantity": 19
+}
+...
+✅Body | Cookies | Headers(5) | Test Results                 Status: 201 Created  Time: 236 ms   Size: 205 B
+Pretty | Raw | Preview | Visualize | Text 
+ {productId}
+
+
+...
+
+
+[terminal]
+$ ./bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic product-created-events-topic --property print.key=true
+{productId}  {"title": "iPhone11", "price": 800, "quantity": 19}
+|
+
+
+
+~
+
+
+
+✏️>>> Stop Kafka Server #3 and send a new message via POSTMAN
+[terminal3]
+#$ ./bin/kafka-server-start.sh config/kraft/server-3.properties
+#|
+Ctrl + C
+
+
+[terminal]
+$ ./bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic product-created-events-topic --property print.key=true
+{productId}  {"title": "iPhone11", "price": 800, "quantity": 19}
+{productId}  {"title": "iPhone11", "price": 800, "quantity": 19}
+|
+
+
+[IntelliJ]
+ProductsMicroservice
+  > ▶️ ProductsMicroserviceApplication
+
+
+
+
+~
+
+
+
+✏️>>> Stop Kafka Server #2 and send a new message via POSTMAN
+[terminal2]
+#$ ./bin/kafka-server-start.sh config/kraft/server-2.properties
+#|
+Ctrl + C
+
+
+[terminal]
+$ ./bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic product-created-events-topic --property print.key=true
+{productId}  {"title": "iPhone11", "price": 800, "quantity": 19}
+{productId}  {"title": "iPhone11", "price": 800, "quantity": 19}
+|
+
+
+[IntelliJ]
+ProductsMicroservice
+  > ▶️ ProductsMicroserviceApplication
+...
+[Producer clientId=producer-1] Got error produce response with correlation id 1169 on topic-partition topic2-1, retrying (2147482486 attempts left). Error: NOT_ENOUGH_REPLICAS
+[Producer clientId=producer-1] Got error produce response with correlation id 1169 on topic-partition topic2-1, retrying (2147482486 attempts left). Error: NOT_ENOUGH_REPLICAS
+[Producer clientId=producer-1] Got error produce response with correlation id 1169 on topic-partition topic2-1, retrying (2147482486 attempts left). Error: NOT_ENOUGH_REPLICAS
+[Producer clientId=producer-1] Got error produce response with correlation id 1169 on topic-partition topic2-1, retrying (2147482486 attempts left). Error: NOT_ENOUGH_REPLICAS
+Exception thrown when sending a message with key='{KEY}'  and payload='..ProductCreatedEvent@2143f8ca' to topic
+
+Expiring 1 record(s) for topic2-1:12001 ms has passed since batch creation
+
+concurrent.ExecutionException: org.springframework.kafka.core.KafkaProducerException: Failed to send ❌
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Producer : Retries
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+🧐🔎🕵️ Retry attempts are made at regular intervals which are controlled by property `retry.backoff.ms`
+ -> In this case Kafka Producer will retry ten times with one second per interval
+✏️ spring.kafka.producer.retries=10
+✏️ spring.kafka.producer.properties.retry.backoff.ms=1000
+=======================================================================================================================================
+
+📝 Kafka Producer: Retries Configuration Properties
+---------------
+
+[✏️#~/...application.properties]
+server.port=0
+spring.kafka.producer.boostrap-servers=localhost:9092
+spring.kafka.producer.key-serializer=org.apache.kafka.common.serialization.StringSerializer
+spring.kafka.producer.value-serializer=org.springframework.kafka.support.serializer.JsonSerializer
+spring.kafka.producer.acks=all     #default => 1
+
+spring.kafka.producer.retries=10   #default => 2147483647           ✅
+spring.kafka.producer.properties.retry.backoff.ms=1000  #(1 Second) ✅
+~
+🧐🔎🕵️ Retry attempts are made at regular intervals which are controlled by property `retry.backoff.ms`
+ -> In this case Kafka Producer will retry ten times with one second per interval
+✏️ spring.kafka.producer.retries=10
+✏️ spring.kafka.producer.properties.retry.backoff.ms=1000
+
+
+~
+
+
+Before running our Spring Boot Application...
+✏️>>> Let's start three Kafka Servers (server-1, server-2 and server-3) 👇👇👇
+-------------------------
+
+[terminal1]
+$ ./bin/kafka-server-start.sh config/kraft/server-1.properties
+
+[terminal2]
+$ ./bin/kafka-server-start.sh config/kraft/server-2.properties
+
+[termina3]
+$ ./bin/kafka-server-start.sh config/kraft/server-3.properties
+
+
+
+~
+
+
+
+✏️>>> Run ProductServiceApplication  👇👇👇
+-------------------------
+
+[IntelliJ]
+ProductsMicroservice
+  > ▶️ ProductsMicroserviceApplication
+
+
+
+~
+
+
+
+✏️>>> Send Kafka Message via POSTMAN >>>
+-------------------------
+[POSTMAN]
+[POST] http://localhost:{PORT}/products
+Params | Authorization | Headers | ✅Body | Pre-request Script | Tests | Settings
+none | form-data | x-www-form-urlencoded | ✅raw | binary | GraphQL | 💥JSON
+~
+{
+    "title": "iPhone11",
+    "price": 800,
+    "quantity": 19
+}
+...
+✅Body | Cookies | Headers(5) | Test Results                 Status: 201 Created  Time: 236 ms   Size: 205 B
+Pretty | Raw | Preview | Visualize | Text 
+ {productId}
+
+
+[terminal]
+$ ./bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic product-created-events-topic --property print.key=true
+{productId}  {"title": "iPhone11", "price": 800, "quantity": 19}
+|
+
+
+
+~
+
+
+
+✏️>>> Stop Kafka Server #3 and send a new message via POSTMAN
+[terminal3]
+#$ ./bin/kafka-server-start.sh config/kraft/server-3.properties
+#|
+Ctrl + C
+
+
+[POSTMAN]
+[POST] http://localhost:{PORT}/products
+Params | Authorization | Headers | ✅Body | Pre-request Script | Tests | Settings
+none | form-data | x-www-form-urlencoded | ✅raw | binary | GraphQL | 💥JSON
+~
+{
+    "title": "iPhone11",
+    "price": 800,
+    "quantity": 19
+}
+...
+✅Body | Cookies | Headers(5) | Test Results                 Status: 201 Created  Time: 236 ms   Size: 205 B
+Pretty | Raw | Preview | Visualize | Text 
+ {productId}
+
+
+[terminal]
+$ ./bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic product-created-events-topic --property print.key=true
+{productId}  {"title": "iPhone11", "price": 800, "quantity": 19}
+{productId}  {"title": "iPhone11", "price": 800, "quantity": 19}
+|
+
+
+
+~
+
+
+
+✏️>>> Stop Kafka Server #2 and send a new message via POSTMAN
+[terminal2]
+#$ ./bin/kafka-server-start.sh config/kraft/server-2.properties
+#|
+Ctrl + C
+
+
+[POSTMAN]
+[POST] http://localhost:{PORT}/products
+Params | Authorization | Headers | ✅Body | Pre-request Script | Tests | Settings
+none | form-data | x-www-form-urlencoded | ✅raw | binary | GraphQL | 💥JSON
+~
+{
+    "title": "iPhone11",
+    "price": 800,
+    "quantity": 19
+}
+...
+✅Body | Cookies | Headers(5) | Test Results                 Status: 500 Internal Server Error  Time: 10.04 s   Size: 303 B
+Pretty | Raw | Preview | Visualize | Text 
+{
+    "timestamp": 2025-08-02T15:21:28.184+00:00
+    "message": "org.springframework.kafka.core.KafkaProducerException: Failed to send",
+    "details": "/products"
+}
+
+
+[IntelliJ]
+ProductsMicroservice
+  > ▶️ ProductsMicroserviceApplication
+~
+Partition: 2
+Topic: topic2
+Offset: 1
+***** Returning product id
+Before publishing a ProductCreatedEvent
+[Producer clientId=producer1] Node3 disconnected
+[Producer clientId=producer1] Connection to node 3 (localhost/127.0.0.1:9096) could not be established. Broker may not be available
+Partition: 1
+Topic: topic2
+Offset: 0
+***** Returning product id
+[Producer clientId=producer1] Node 2 disconnected
+[Producer clientId=producer1] Node -2 disconnected
+Before publishing a ProductCreatedEvent
+[Producer clientId=producer1] Got error produce response with correlation id 1169 on topic-partition topic2-1, retrying (9 attempts left). Error: NOT_ENOUGH_REPLICAS
+[Producer clientId=producer1] Got error produce response with correlation id 1169 on topic-partition topic2-1, retrying (8 attempts left). Error: NOT_ENOUGH_REPLICAS
+[Producer clientId=producer1] Got error produce response with correlation id 1169 on topic-partition topic2-1, retrying (7 attempts left). Error: NOT_ENOUGH_REPLICAS
+[Producer clientId=producer1] Got error produce response with correlation id 1169 on topic-partition topic2-1, retrying (6 attempts left). Error: NOT_ENOUGH_REPLICAS
+[Producer clientId=producer1] Got error produce response with correlation id 1169 on topic-partition topic2-1, retrying (5 attempts left). Error: NOT_ENOUGH_REPLICAS
+[Producer clientId=producer1] Got error produce response with correlation id 1169 on topic-partition topic2-1, retrying (4 attempts left). Error: NOT_ENOUGH_REPLICAS
+[Producer clientId=producer1] Got error produce response with correlation id 1169 on topic-partition topic2-1, retrying (3 attempts left). Error: NOT_ENOUGH_REPLICAS
+[Producer clientId=producer1] Got error produce response with correlation id 1169 on topic-partition topic2-1, retrying (2 attempts left). Error: NOT_ENOUGH_REPLICAS
+[Producer clientId=producer1] Got error produce response with correlation id 1169 on topic-partition topic2-1, retrying (1 attempts left). Error: NOT_ENOUGH_REPLICAS
+Exception thrown when sending a message with key='{KEY}'  and payload='..ProductCreatedEvent@2143f8ca' to topic
+
+Expiring 1 record(s) for topic2-1:12001 ms has passed since batch creation
+
+concurrent.ExecutionException: org.springframework.kafka.core.KafkaProducerException: Failed to send ❌
+
+
+
+
+[terminal]
+$ ./bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic product-created-events-topic --property print.key=true
+{productId}  {"title": "iPhone11", "price": 800, "quantity": 19}
+{productId}  {"title": "iPhone11", "price": 800, "quantity": 19}
+|
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Producer : Delivery & Request Timeout
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[✏️#~/...application.properties]
+server.port=0
+spring.kafka.producer.boostrap-servers=localhost:9092
+spring.kafka.producer.key-serializer=org.apache.kafka.common.serialization.StringSerializer
+spring.kafka.producer.value-serializer=org.springframework.kafka.support.serializer.JsonSerializer
+spring.kafka.producer.acks=all     #default => 1
+
+#spring.kafka.producer.retries=10   #default => 2147483647           🔍
+#spring.kafka.producer.properties.retry.backoff.ms=1000  #(1 Second) 🔍
+spring.kafka.producer.properties.delivery.timeout.ms=120000          ✅
+spring.kafka.producer.properties.linger.ms=0                         ✅
+spring.kafka.producer.properties.request.timeout.ms=30000            ✅
+~
+🧐🔎🕵️ delivery.timeout.ms has to be greater or equal to linger.ms + request.timeout.ms
+
+
+Why prefer delivery.timeout.ms with linger.ms and request.timeout.ms Instead of retries and retry.backoff.ms in Kafka❓
+-------------------------
+
+-------------------------------------------------------------------------------------------------------------------------------------- |
+| Property              | What It Does                                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `delivery.timeout.ms` | **Total timeout** for sending a message successfully, including all retries and delays. Default: 120,000 ms. |
+| `linger.ms`           | Wait time before batching and sending messages. Helps performance.                                           |
+| `request.timeout.ms`  | Timeout for receiving a broker response after sending a request.                                             |
+| `retries`             | Number of retry attempts (does **not** control total retry duration).                                        |
+| `retry.backoff.ms`    | Wait time **between** retries.                                                                               |
+|------------------------------------------------------------------------------------------------------------------------------------- |
+
+✅1. Simpler and More Accurate Timeout Management
+  -> With delivery.timeout.ms, you specify the maximum total time Kafka has to send a record, including retries, network delays, and batching (via linger.ms).
+  -> This removes the need to manually compute:  (retries * retry.backoff.ms) + Network Delays + Batch Latency
+✅2. Avoid Inconsistencies 
+  -> If you use `retries` and `retry.backoff.ms` without aligning delivery.timeout.ms, 
+     Kafka may stop retrying before exhausting retries because the overall timeout was reached.
+✅  3. Cleaner and More Predictable Behavior
+  -> By focusing on delivery.timeout.ms, you delegate all retry logic and timing to Kafka’s internal logic, avoiding brittle configurations.
+
+
+
+
+
+~
+
+
+
+
+
+❓ Quiz 5  |  Quiz: Kafka Producer Acknowledgments and Retries
+Quiz 5|5 questions
+=======================================================================================================================================
+
+📝 Question 1:
+What does the 'acks' configuration in a Kafka Producer specify❓
+[ ] The number of follower brokers that must replicate the message
+[ ] The number of retries the producer will attempt after a failure
+✅ The acknowledgment level required from the kafka cluster for successful message delivery
+~
+The `acks` configuration in Kafka Producer determines the level of acknowledgment required from the Kafka Cluster 
+for a message to be considered successfully delivered.
+e.g.
+  `acks`=0, means the producer won't wait for any acknowledgment
+  `acks`=1, means waiting for an acknowledgment from the Leader Broker only
+  `acks`=all means waiting for acknowledgment from al In-Sync Replicas
+
+
+📝 Question 2:
+What is the impact of setting 'acks=all' in a Kafka Producer configuration❓
+[ ] It increases message throughput by reducing the acknowledgement overhead
+✅ It ensures higher data durability by requiring acknowledgement from all In-Sync replicas
+[ ] It encrypts all messages sent from the producer for added security
+~
+The `acks=all` setting in a Kafka Producer configuration ensures higher data durability.
+This is because it requires acknowledgment from all in-sync replicas before considering the message
+successfully sent, reducing the likelihood of data loss in case of broker failure.
+
+
+📝 Question 3:
+What is a possible drawback of setting 'acks=0' in a Kafka Producer❓
+[ ] It results in higher network usage due to frequent acknowledgement Messages
+✅ It may lead to data loss as the producer does not wait for any acknowledgement from brokers
+[ ] It significantly reduces the producers's throughput due to waiting for acknowledgments
+~
+One of the main drawbacks of setting `acks=0` in a Kafka Producer is the increased risk of data loss.
+In this configuration, the producer sends messages without waiting for any acknowledgement from the brokers, 
+which means it won't know if the message was not received or stored by the Kafka cluster.
+
+
+📝 Question 4:
+What does the 'retries' configuration in a Kafka Producer control❓
+✅ The number of times the producer will attempt to resend a message after a send failure.
+[ ] The total time the producer will spend retrying a message before giving up
+[ ] The speed at which messages are sent to the Kafka broker
+~
+The 'retries' configuration in a Kafka Producer specifies the number of retry attempts the producer will make 
+if a message send fails. This is crucial for ensuring message delivery in the event of transient issues,
+such as temporary network problems or brief broker unavailability
+
+
+📝 Question 5:
+How does the 'retry.backoff.ms' setting affect Kafka Producer retries?
+[ ] It sets the maximum size of the message batch for retries
+✅ It specifies the time to wait before attempting a message retry after a failure
+[ ] It determines the number of retries for each message
+~
+The 'retry.backof..ms' setting in a Kafka Producer specifies the amount of time to wait before attempting another retry after a send failure. 
+This backoff time is crucial to prevent overloading the network or broker with rapid successive retries.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Producer : Spring Bean Configuration
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+In previous lessons... 
+We've configured Kafka Producer using Application.properties file.
+It works well, but one thing I do not like about configuring producer in Application.properties file
+is that to configure key and value serializers, I need to type complete name of the class, including
+its package name.
+
+
+@Configuration
+public class KafkaConfig {
+
+    @Value("${spring.kafka.producer.bootstrap-servers}")
+    private String bootstrapServers;
+
+    @Value("${spring.kafka.producer.key-serializer}")
+    private String keySerializer;
+
+    @Value("${spring.kafka.producer.value-serializer}")
+    private String valueSerializer;
+
+    @Value("${spring.kafka.producer.acks}")
+    private String acks;
+
+    @Value("${spring.kafka.producer.properties.delivery.timeout.ms}")
+    private String deliveryTimeout;
+
+    @Value("${spring.kafka.producer.properties.linger.ms}")
+    private String linger;
+
+    @Value("${spring.kafka.producer.properties.request.timeout.ms}")
+    private String requestTimeOut;
+
+    Map<String, Object> producerConfig() {
+        Map<String, Object> config = new HashMap<>();
+
+        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, keySerializer);
+        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, valueSerializer);
+        config.put(ProducerConfig.ACKS_CONFIG, acks);
+        config.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, deliveryTimeout);
+        config.put(ProducerConfig.LINGER_MS_CONFIG, linger);
+        config.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, requestTimeout);
+
+    }
+
+
+    @Bean
+    ProducerFactory<String, ProductCreatedEvent> producerFactory() {
+        return new DefaultKafkaProducerFactory<>(producerConfigs);
+    }
+
+    @Bean
+    KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate() {
+        return new KafkaTemplate<String, ProductCreatedEvent>(producerFactory());
+    }
+
+}
+~
+
+Kafka template is a higher level object that wraps Kafka producer
+ -> Integrates it with Spring Framework and simplifies its usage
+Kafka Producer is a low level API that actually sends message to Kafka brokers.
+
+
+Java Code Configuration Properties have higher priority than configuration properties defined in application properties file.
+ ->  This means that if you have the same property key in both places, 
+     ...the value defined here in Java code will overwrite the value defined in the application properties file.
+
+Configuring Kafka producer using Java code, 
+It gives you more flexibility because here in Java code you can apply custom business logic.
+And if needed, you can configure your Kafka producer based on certain logical conditions.

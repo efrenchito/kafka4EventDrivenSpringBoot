@@ -1,0 +1,1195 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgement & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handle Deserializer Errors
+📝 S11 : Kafka Consumer - Exceptions and Retries
+📝 S12 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S13 : Kafka Consumer - Idempotency
+📝 S14 : Apache Kafka and Database Transactions
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 06 - Kafka Producer - Spring Boot Microservice
+=======================================================================================================================================
+
+🚀 Kafka Producer -Introduction 
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+What are the main responsibilities of a Kafka Producer❓
+ o Publish/Produce Messages
+ o Specify Topic name
+ o Specify Partition
+ o Serialize Messages to Binary format
+...
+🧨⚠️🤯 When sending a new message to Kafka topic, we could also specify the partition where we want to store it, this parameter is optional
+If we do not specify topic partition, then Kafka Producer will make this decision for us.
+📝 If a message key is provided, Kafka will hash the key and use the result to determine the partition, 
+  -> this ensures that all messages with the same key go to the same partition.
+📝 If NO message key is provided, kafka will distribute messages across partitions in a round robin fashion
+   -> ensuring a balanced load.
+=======================================================================================================================================
+
+What are the main responsibilities of a Kafka Producer❓
+ o Publish/Produce Messages
+ o Specify Topic name
+ o Specify Partition
+ o Serialize Messages to Binary format
+
+The primary role of a Kafka Producer is to publish Messages or Events to one or more Kafka Topics.
+We've already seen hot to publish messages using kafka/bin/kafka-console-producer.sh
+...
+This can also be achieved via Spring Boot Application by adding dependency  💥'org.springframework.kafka:spring-kafka'
+ -> Which simplifies the process of integrating Kafka functionality into your spring application.
+ => Spring Boot Kafka, provide to us the Kafka Template class which encapsulates Kafka Producer and provides 
+a very friendly way to interact with Kafka from Spring Boot Application.
+
+Before sending a message, Kafka producer serializes it into a byte array.
+So another responsibility of Kafka Producer is to serialize messages to binary format that can be transmitted
+over the network to Kafka brokers.  
+Another responsibility of Kafka producer is to specify the name of Kafka topic, where these messages should be sent.
+
+🧨⚠️🤯 When sending a new message to Kafka topic, we could also specify the partition where we want to store it, this parameter is optional
+If we do not specify topic partition, then Kafka Producer will make this decision for us.
+📝 If a message key is provided, Kafka will hash the key and use the result to determine the partition, 
+  -> this ensures that all messages with the same key go to the same partition.
+📝 If NO message key is provided, kafka will distribute messages across partitions in a round robin fashion
+   -> ensuring a balanced load.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Producer - Synchronous Communication Style
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+Kafka Producer can send Messages to a Kafka Broker in two different ways:
+ o Synchronous
+ o Asynchronous
+
+So when you need to acknowledge that the message was successfully received and store 
+before it proceeds with sending next message or performing other operations
+ -> Then it must use Synchronous communication
+ => Notice Kafka Producer will be blocked/on-hold until it receives a confirmation from Kafka Broker
+
+
+Using synchronous communication style between Kafka Producer and Kafka broker is considered to be more
+
+reliable because it ensures that message was successfully stored before moving on to the next task.
+
+But because producer is waiting, it can make your system just a little bit slower.
+
+In those cases where high throughput and low latency is required, you might want to consider a different
+
+communication style that is called a synchronous communication.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Producer - Synchronous Communication Style
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+Kafka Producer can send Messages to a Kafka Broker in two different ways:
+ o Synchronous
+ o Asynchronous
+
+So when you need to acknowledge that the message was successfully received and store 
+before it proceeds with sending next message or performing other operations
+ -> Then it must use Synchronous communication
+ => Notice Kafka Producer will be blocked/on-hold until it receives a confirmation from Kafka Broker
+
+
+Using synchronous communication style between Kafka Producer and Kafka broker is considered to be more
+
+reliable because it ensures that message was successfully stored before moving on to the next task.
+
+But because producer is waiting, it can make your system just a little bit slower.
+
+In those cases where high throughput and low latency is required, you might want to consider a different
+
+communication style that is called a synchronous communication.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Producer - Synchronous & Asynchronous Communication Style
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+Kafka Producer can send Messages to a Kafka Broker in two different ways:
+ o Synchronous
+ o Asynchronous
+
+
+📝 Synchronous Communication
+---------------
+So when you need to acknowledge that the message was successfully received and store 
+before it proceeds with sending next message or performing other operations
+ -> Then it must use Synchronous communication
+ => Notice Kafka Producer will be blocked/on-hold until it receives a confirmation from Kafka Broker
+
+🧐🕵️🔎 >>> Using synchronous communication style between Kafka Producer and Kafka broker is considered to be more reliable 
+because it ensures that message was successfully stored before moving on to the next task.
+However, because producer will be waiting until it gets a response back, it can make your system a little bit slower.
+
+In those cases where high throughput and low latency is required...
+ -> You might want to consider a Asynchronous communication Style.
+
+
+
+📝 Asynchronous Communication
+---------------
+If we send our Messages Asynchronously, Kafka Producer will NOT be blocked/on-hold and it will continue its execution right away
+This way our events will be placed without waiting for Kafka Broker to acknowledge that we've received an event.
+ -> Once Kafka Broker sends its acknowledgement, we can handle it and process it with asynchronous callback
+
+
+
+
+
+~
+
+
+
+
+
+❓ Quiz: Kafka Producer
+Quiz 4|6 questions
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+📝 Question 1:
+What is the primary function of a Kafka Producer❓ 
+[ ] To consume messages from Kafka Topics
+✅ To write data to Kafka Topics
+[ ] To replicate data across Kafka Brokers
+~
+The main role of Kafka Producer is to write data to Kafka Topics.
+Producers are client applications that send streams of data topics within the Kafka Cluster.
+The producer determines which topic the data should be sent to 
+..and can also specify a key that influences the partition within the topic to which the data is sent
+
+
+📝 Question 2:
+How does a Kafka Producer determine which partition to send a message to❓
+[ ] Based on the consumer's subscription
+✅ Based on a provided message key or round-robin if NO key is provided
+[ ] Randomly selects a partition for each message
+~
+Kafka Producers use message key to determine which partition a message should be sent to within a topic.
+If a key is provided, Kafka uses it to consistently assign all messages with that key to the same partition.
+If no key is provided, Kafka uses a round-robig method to distribute messages evenly across the available partitions
+
+
+📝 Question 3:
+What library is typically used to integrate Kafka functionality into a Spring Boot application❓
+[ ] JPA (Java Persistence API)
+✅ Spring for Apache Kafka
+[ ] Hibernate ORM
+~
+Spring for Apache Kafka is the library commonly used for integrating Kafka with a Spring Boot Application.
+It simplifies the process of working with Kafka providing a higher-level abstraction that fits well within 
+the Spring ecosystem, making it easier to send and receive messages to and from Kafka topics
+
+
+📝 Question 4:
+In a Kafka Producer, what is the responsibility related to message serialization❓
+[ ] To compress the message for efficient storage
+✅ To serialize messages into a binary format for transmission
+[ ] To encrypt the message for secure transmission
+~
+One of the key responsibilities of a Kafka Producer is to serialize messages into a binary format
+before they are transmitted over the network to Kafka Brokers.
+Serialization converts the message data, which might be in various formats (like Strings, Objects, etc...)
+into a standard binary format that can be efficiently transmitted and stored in Kafka
+
+
+📝 Question 5:
+In the context of the Orders Microservice acting as a Kafka Producer, what characterizes the synchronous communication style with the Kafka Broker❓
+[ ] The orders Microservice sends an Order Created Event and proceeds with other tasks
+    ..without waiting for a response from the Kafka Broker
+✅ The Orders Microservice sends an Order Created Event and waits for an acknowledgement from the 
+    ..Kafka Broker before responding back to the Mobile Application
+[ ] The Orders Microservice Encrypts the Order Created Event for Security before sending it to Kafka Broker
+
+
+📝 Question 6:
+How does the Kafka Producer behave when sending a User LoggedIn Event to the Kafka Broker asynchronously❓
+[ ] The Kafka Producer send the User LoggedIn Event and waits for an acknoledgement from the 
+    ..Kafka Broker before continuint its execution
+✅ The Kafka Producer sends the User LoggedIn Event and continues its execution right away
+    ..without waiting for an acknowledgement from the Kafka Broker
+[ ] The Kafka Producer encrypts the User LoggedIn Event and waits for the Kafka Broker
+    ..to confirm its successful decryption
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Creating a New Spring Boot Application
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+⚓ https://start.spring.io
+
+Language:  Java
+Packaging: Jar
+Version: 17
+
+Project:  Maven
+Group: com.learning.kafka
+Artifact: ProductsMicroservice
+Name: ProductsMicroservice
+Description: Products Microservice
+Package name: com.learning.kafka.products
+
+Spring Boot
+ Version: 3+
+
+Dependencies: 
+ o Spring Web [WEB]
+ o Spring for Apache Kafka [MESSAGING]
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Producer configuration properties
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+🧐🕵️🔎 server.port=0  -> Assign a port randomly
+
+[✏️#~/...application.properties]
+server.port=0
+spring.kafka.producer.boostrap-servers=localhost:9092
+spring.kafka.producer.key-serializer=org.apache.kafka.common.serialization.StringSerializer
+spring.kafka.producer.value-serializer=org.springframework.kafka.support.serializer.JsonSerializer
+=======================================================================================================================================
+
+[✏️#~/...application.properties]
+server.port=0
+spring.kafka.producer.boostrap-servers=localhost:9092
+spring.kafka.producer.key-serializer=org.apache.kafka.common.serialization.StringSerializer
+spring.kafka.producer.value-serializer=org.springframework.kafka.support.serializer.JsonSerializer
+
+If property  'server.port' is NOT defined it will use port 8080 by default
+server.port=0 Will assign a port randomly
+ -> This ensures that if we launch the same application again NO PORT conflict will happen
+
+spring.kafka.producer.boostrap-servers=localhost:9092
+On Windows, instead of 'localhost', you might need to use [::1]
+e.g. spring.kafka.producer.boostrap-servers=[::1]:9092
+🧐🕵️🔎 A boostrap server is an initial connection point for Kafka Client to connect to Kafka Cluster
+ -> The value of this property should be set to a comma separated list of host and port number pairs
+    ..Representing addresses of Kafka brokers in the cluster
+🧨⚠️🤯 For development purposes one server is enough.
+ -> However if you have more brokers in your cluster, is better to provide at least 2 bootstrap servers
+
+
+spring.kafka.producer.key-serializer=org.apache.kafka.common.serialization.StringSerializer
+This configuration property is used to specify the serializer for message keys
+...
+spring.kafka.producer.value-serializer=org.springframework.kafka.support.serializer.JsonSerializer
+This configuration property is used to specify the serializer for message keys
+
+🧐🕵️🔎 This Spring Boot Application will be publishing events in JSON format
+ -> So for JSON we'll use JsonSerializer (org.springframework.kafka.support.serializer.JsonSerializer)
+ -> Notice this serializer class comes from org.springframework.kafka package rather than from org.apache.kafka
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Creating Kafka Topic
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+🧐🕵️🔎 Since we'll use this class to create related Kafka Beans
+ -> It must be annotated with @Configuration annotation and the method with @Bean
+ -> Notice we're using TopicBuilder from org.springframework.kafka package 
+ -> TopicBuilder returns a NewTopic variable from org.apache.kafka package
+ => TopicBuilder provides utility methods like .name() | .partitions() | .replicas() | .configs()  & .build()
+...
+🧨⚠️🤯 Defining N Partitions, this means we can have up to N Microservices consuming messages from this Topic 
+🧨⚠️🤯 Defining N Replicas, this means the Topic will have N copies, 1 Leader and N-1 Followers having one copy on each broker
+  -> Partitions improve application Throughput whereas Replicas add Fault Tolerance/Resiliency
+=======================================================================================================================================
+Before Kafka producer sends a message to Kafka topic. It's a good practice to create that topic first.
+
+[✏️#~/...KakfaConfig.java]
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.
+import org.springframework.kafka.config.TopicBuilder;
+import org.apache.kafka.clients.admin.NewTopic;
+
+@Configuration
+public class KafkaConfig {
+
+    @Bean
+    NewTopic createTopic() {
+        return TopicBuilder
+            .name("product-created-events-topic")
+            .partitions(3)
+            .replicas(3)
+            .configs(Map.of("min.insync.replicas", "2"))
+            .build();
+    }
+}
+
+🧐🕵️🔎 Since we'll use this class to create related Kafka Beans
+ -> It must be annotated with @Configuration annotation
+
+🧐🕵️🔎 By increasing the numbers of partitions...
+ -> Parallel Processing is enabled, so we can have up to N the number of Microservices that will read from it  (Scalability & High Throughput)
+🧐🕵️🔎 A Replica is a copy of Topics data stored in a different Broker
+...
+🧨⚠️🤯 Defining N Partitions, this means we can have up to N Microservices consuming messages from this Topic
+ -> Defining N Replicas, this means the Topic will have N copies, 1 Leader and N-1 Followers having one copy on each broker
+
+~
+
+🧐🕵️🔎 The method .configs() from the class org.springframework.kafka.config.TopicBuilder...
+ -> Is used to define custom configuration properties for the Kafka topic you are creating
+ => Retention policies | Compaction settings | Cleanup configurations | Min/max message sizes | Segment settings 
+✏️>>>
+   .configs(Map.of(
+        "retention.ms", "604800000",       // 7 days
+        "cleanup.policy", "delete",        // or "compact"
+        "max.message.bytes", "1048576",    // 1MB max message size
+        "min.insync.replicas", "2"         // Min Number of Replicas that must acknowledge the write ops
+    ))
+...
+When you require that messages are acknowledged...
+ -> This makes writting to a Topic a little bit slower
+ => But it also makes it more reliable
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Run SpringBoot app to create Kafka Topic
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+Before launching the SpringBoot Application, make sure your Kafka Servers are up and running.
+
+
+[IntelliJ]
+ProductsMicroservice > 
+  ▶️ ProductsMicroserviceApplication 
+
+Now, that my app is up and running...
+Let's check our Topic was created
+
+
+[terminal]
+$ cd {WORKSPACE}
+$ cd kafka
+$ ./bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic product-created-events-topic
+Topic: product-created-events-topic    TopicId: {ID}    PartitionCount: 3    ReplicationFactor:3  Configs: min.insync.replicas=2,segment.bytes=1073741824
+        Topic: product-created-events-topic    Partition: 0    Leader: 3    Replicas: 3,1,2  Isr:  3,1,2
+        Topic: product-created-events-topic    Partition: 1    Leader: 1    Replicas: 1,2,3  Isr:  3,1,2
+        Topic: product-created-events-topic    Partition: 2    Leader: 2    Replicas: 2,3,1  Isr:  2,3,1
+
+
+🧐🕵️🔎 The fact that I have this information displayed...
+ -> Confirms my Java code does work, and it did create a New Java Topic
+🧐🕵️🔎 Isr stands for In-Sync Replicas 
+ -> This is Replicas that are up to date with the leader and can take ove if the leader fails
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Creating Rest Controller
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+In this lesson, we are going to create a new Rest controller class... 
+This class will expose one API endpoint that will be used to accept HTTP Request to create a new product.
+
+
+[✏️#~/...ProductController]
+package com.learning.kafka.product.rest;
+
+import ...
+
+@RestController
+@RequestMapping("/products")  //http://localhost:<port>/products
+public class ProductController {
+
+    @PostMapping
+    public ResponseEntity<String> createProduct(@RequestBody CreateProductRestModel product) {
+        return ResponseEntity.status(HttpStatus.CREATED).body("");
+    }
+}
+
+
+📝 Notice this CreateProductRestModel class, represents the payload that will be passed to the POST method
+ -> This Object will contain the information for the Product itself that will be created
+[✏️#/...CreateProductRestModel]
+package com.learning.kafka.product.rest;
+
+import ...
+
+public class CreateProductRestModel {
+    private String title;
+    private BigDecimal price;
+    private Integer quantity;
+
+    //Getters
+    //Setters
+}
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Creating Rest Service
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[✏️#/...ProductService]
+package com.learning.kafka.product.service;
+
+public interface ProductService {
+
+    String createProduct(CreateProductRestModel productRestModel);
+
+}
+
+
+[✏️#/...ProductServiceImpl]
+package com.learning.kafka.product.service;
+
+@Service
+public class ProductServiceImpl implements ProductService {
+
+    @Override 
+    public String createProduct(CreateProductRestModel productRestModel) {
+        //TODO: Auto-generated method stub
+        return null;
+    }
+}
+~
+🧐🕵️🔎 @Service annotation will mark this class as a Spring Component
+ -> Indicating that this class contains Business Logic
+ -> It will also allow Spring Framework to discover this class at the time when our application starts up
+    ..Creating a new instance of this class
+    ..Adding that instance to the Spring Application Context
+    => Once that instance is available in the Spring Application Context we can use Dependency Injection
+
+
+[✏️#~/...ProductController]
+package com.learning.kafka.product.rest;
+
+import ...
+
+@RestController
+@RequestMapping("/products")  //http://localhost:<port>/products
+public class ProductController {
+
+    ProductService productService;
+
+    public ProductController(ProductService productService) {
+        this.productService = productService;
+    }
+
+    @PostMapping
+    public ResponseEntity<String> createProduct(@RequestBody CreateProductRestModel product) {
+        
+        String productId = productService.createProduct(product);
+        
+        return ResponseEntity.status(HttpStatus.CREATED).body(productId);
+    }
+}
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Creating Event Class
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+Now, the information that this event object will contain is up to you and up to the needs of your application.
+So what is it that needs to be done when this event object is consumed from Kafka topic?
+And depending on those business needs, you will decide what information to include in this event object.
+For this sample project, we'll make this event object contain same product details information that was used to create a product.
+
+
+[✏️#~/...ProductCreatedEvent]
+package com.learning.kafka.product.service;
+
+//@NoArgsConstructor
+//@AllArgsConstructor
+public class ProductCreatedEvent {
+    
+    private String productId;
+    private String title;
+    private BigDecimal price;
+    private Integer quantity;
+
+    //@Getters
+    //@Setters
+}
+~
+🧐🕵️🔎 The no-Args constructor is needed for Serialization/Deserialization
+ -> Notice when Kafka Producer publishes this event Object, it will be serialized into a byte array
+ => Later on Kafka Consumer will need to Deserialize this message by using this same Event class
+
+🧨⚠️🤯 The Serialization/Deserialization process involves creating empty instances of this class by using no-args constructor
+ -> Later on fields will be populated using the setter methods
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Producer: Sends Message Asynchronously
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+KafkaTemplate<K,V> kafkaTemplate | SendResult<K,V>
+CompletableFuture<SendResult<K,V>> future = kafkaTemplate.send(...);
+future.whenComplete((result, exception) -> { 
+  if(exception != null) { exception.getMessage(); }
+  if(exception == null) { result.getRecordMetadata(); }
+});
+=======================================================================================================================================
+
+[✏️#/...ProductServiceImpl]
+package com.learning.kafka.product.service;
+
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+
+import org.springframework.stereotype.Service;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.SendResult;
+
+import com.learning.kafka.products.rest.CreateProductRestModel;
+
+
+@Service
+public class ProductServiceImpl implements ProductService {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+
+    KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate;
+
+    public ProductServiceImpl(KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate) {
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
+    @Override 
+    public String createProduct(CreateProductRestModel productRestModel) {
+        String productId = UUID.randomUUID().toString();
+        //TODO: Persist Product Details into database table before publishing an Event
+
+        ProductCreatedEvent productCreatedEvent = new ProductCreatedEvent(
+            productId,
+            productRestModel.getTitle(),
+            productRestModel.getPrice(),
+            productRestModel.getQuantity()
+        );
+
+        CompletableFuture<SendResult<String, ProductCreatedEvent>> future =
+          kafkaTemplate.send("product-created-events-topic", productId, productCreatedEvent);
+
+        future.whenComplete((result, exception) -> {
+            if(exception == null) {
+                LOGGER.info("Message sent successfully: " + exception.getRecordMetadata());
+            } else {
+                LOGGER.error("Failed to send message: " + exception.getMessage());
+            }
+        });
+
+        LOGGER.info("***** Returning product id");
+
+        return productId;
+    }
+}
+~
+🧐🕵️🔎 To publish Events in Kafka Topic...
+ -> We can use Kafka Template (A Special Client) provided by Spring Framework
+ => Kafka Template was designed to send/publish events to Kafka Topic
+    ..It's a small wrapper around Kafka Producer
+    ..Nicely integrated around Spring Features like Dependency Injection & Automatic Configuration
+
+🧨⚠️🤯 Kafka Messages are key-value pairs and we can specify the data type of this key-value pair via Generic Types at declaration
+e.g. KafkaTemplate<String, Event> kafkaTemplate;
+
+🧐🕵️🔎 KafkaTemplate provides a number of send/sendDefault methods that can be used to send Messages to Kafka Topic
+ -> Each method has different set of parameters that it accepts
+    send(String topic, Integer partition, Long timestamp, K key, V data) : CompletableFuture<SendResult<K,V>>  
+    send(String topic, Integer partition, K key, V data) : CompletableFuture<SendResult<K,V>>  
+    send(String topic, K key, V data) : CompletableFuture<SendResult<K,V>>  
+    send(String topic, V data) : CompletableFuture<SendResult<K,V>>  
+    send(org.apache.kafka.clients.producer.ProducerRecord<K,V> record) : CompletableFuture<SendResult<K,V>>  
+    send(Message<?> message) : CompletableFuture<SendResult<K,V>>  
+    sendDefault(Integer partition, Long timestamp, K key, V data) : CompletableFuture<SendResult<K,V>>  
+    sendDefault(Integer partition, K key, V data) : CompletableFuture<SendResult<K,V>>  
+    sendDefault(K key, V data) : CompletableFuture<SendResult<K,V>>  
+    sendDefault(V data) : CompletableFuture<SendResult<K,V>>
+
+
+🧐🕵️🔎 In Kafka we can send Messages synchronously/asynchronously
+Notice send/sendDefault methods return a CompletableFuture, so by default they are asynchronous operation
+📝>>> CompletableFuture is a Java Concurrency API class, which represents a future result of an Asynchronous Computation
+ -> It's used to perform operation asynchronously and then return result of that operation when it's completed
+ => To handle this operation result we can use  '.whenComplete(..)' method
+ => .whenComplete(..) method it's used to handle operation result whether  it's successful or not 
+    ..In case there were a failure in the Asynchronous Operation exception object won't be null
+ ✏️ future.whenComplete((result, exception) -> { ... });
+
+🧨⚠️🤯 To handle this CompletableFuture result, we must check if exception object is NULL or not
+✏️>>> future.whenComplete((result, exception) -> { 
+  if(exception != null) { exception.getMessage(); }
+  if(exception == null) { result.getRecordMetadata(); }
+});
+ -> Notice we use ´exception.getMessage();´ to retrieve the exception details
+ -> ´result.getRecordMetadata();´ is used to retrieve metadata associated with successfully sent message to Kafka Topic
+    ..Which Topic this message was persisted to ?
+    ..Which partition was used ?
+    ..What is the offset ?
+
+
+🧨⚠️🤯 If we'd like to block the current Thread, we have to call the  .join() method
+ -> .join() method will block the current Thread until the future is complete, then it'll return the result of computation once it's available
+ => This way our Kafka publishing operation becomes Synchronous
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Asynchronous: Sends Message Asynchronously [DEMO]
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+
+[terminal]
+$ ./bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic product-created-events-topic --property print.key=true
+|
+
+...
+
+[IntelliJ]
+ProductsMicroservice
+  > ▶️ ProductsMicroserviceApplication
+
+
+~
+
+[POSTMAN]
+[POST] http://localhost:{PORT}/products
+Params | Authorization | Headers | ✅Body | Pre-request Script | Tests | Settings
+none | form-data | x-www-form-urlencoded | ✅raw | binary | GraphQL | 💥JSON
+~
+{
+    "title": "iPhone11",
+    "price": 800,
+    "quantity": 19
+}
+...
+✅Body | Cookies | Headers(5) | Test Results                 Status: 201 Created  Time: 236 ms   Size: 205 B
+Pretty | Raw | Preview | Visualize | Text 
+ {productId}
+
+
+...
+
+
+[terminal]
+$ ./bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic product-created-events-topic --property print.key=true
+{productId}  {"title": "iPhone11", "price": 800, "quantity": 19}
+
+
+...
+
+
+[IntelliJ]
+ProductsMicroservice
+  > ▶️ ProductsMicroserviceApplication
+~
+[Producer clientId=producer-1] Instantiated and  idempotent producer
+Kafka version: 3.6.0
+Kafka commitId: {commitId}
+Kafka startTimeMs: {startTime}
+[Producer clientId=producer-1] Cluster ID: {clusterID}
+***** Returning Product ID
+[Producer clientId=producer-1]  ProducerId set to 1000 with epoch 0
+***** Message sent successfully: product-created-events-topic-1@0
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Producer: Sends Message Synchronously
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+In this lesson... let's discuss how to publish events to Kafka topic Synchronously
+
+If I send Kafka message synchronously, then I can configure my microservice application to wait for
+acknowledgement from all Kafka brokers that my message is successfully stored in Kafka topic.
+When message is sent asynchronously, we do not have this guarantee, and it is possible that we lose 
+this message if an error takes place.
+
+📝Option #1 - CompletableFuture.join();
+-----
+We need to add a call to CompletableFuture .join() method
+The invocation of .join() method makes this code effectively synchronous
+This means the current Thread will wait at this line until the CompletableFuture completes
+✅ This option can be easily refactored back if needed without making major changes
+ -> So, just by commenting this method the Message Publishing will be Asynchronous
+⚠️ The disadvantage is that it can easily confuse other developer and make them think this code is asynchronous
+ -> Because it contains keywords like CompletableFuture
+
+[✏️#~/...ProductServiceImpl]
+@Service
+public class ProductServiceImpl implements ProductService {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+
+    KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate;
+
+    public ProductServiceImpl(KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate) {
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
+    @Override 
+    public String createProduct(CreateProductRestModel productRestModel) {
+        String productId = UUID.randomUUID().toString();
+        //TODO: Persist Product Details into database table before publishing an Event
+
+        ProductCreatedEvent productCreatedEvent = new ProductCreatedEvent(
+            productId,
+            productRestModel.getTitle(),
+            productRestModel.getPrice(),
+            productRestModel.getQuantity()
+        );
+
+        CompletableFuture<SendResult<String, ProductCreatedEvent>> future =
+          kafkaTemplate.send("product-created-events-topic", productId, productCreatedEvent);
+
+        future.whenComplete((result, exception) -> {
+            if(exception == null) {
+                LOGGER.info("Message sent successfully: " + exception.getRecordMetadata());
+            } else {
+                LOGGER.error("Failed to send message: " + exception.getMessage());
+            }
+        });
+
+        future.join();  //💥
+
+        LOGGER.info("***** Returning product id");
+
+        return productId;
+    }
+}
+
+
+📝Option #2 - kafkaTemplate.send(...).get();
+-----
+By calling the get() method will also block the current Thread until the CompletableFuture completes
+ -> In this case instead of returning a CompletableFuture<SendResult<K,V>> will return a SendResult<K,V>
+🧐🕵️🔎 Notice CompletableFuture.get() method throws InterruptedException, ExecutionException
+ -> We can handle it directly in our code via try-catch
+ -> Or just throws those exceptions 
+ => We could wrap this exception into a more generic one
+
+🧨🤯⚠️ The advantage of sending Kafka messages synchronously is that we can configure our microservice to wait for acknowledgement
+..from all Kafka Brokers that the message has been successfully stored in Kafka Topic
+⚠️ However since now the calling method will now wait for a response
+ -> The execution will be just a little bit slower
+✅ The advantage is that now we can have a guarantee that our message is NOT lost and it's indeed persisted in Kafka
+
+
+[✏️#~/...ProductServiceImpl]
+@Service
+public class ProductServiceImpl implements ProductService {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+
+    KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate;
+
+    public ProductServiceImpl(KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate) {
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
+    @Override 
+    public String createProduct(CreateProductRestModel productRestModel) 💥throws Exception💥 {
+        String productId = UUID.randomUUID().toString();
+        //TODO: Persist Product Details into database table before publishing an Event
+
+        ProductCreatedEvent productCreatedEvent = new ProductCreatedEvent(
+            productId,
+            productRestModel.getTitle(),
+            productRestModel.getPrice(),
+            productRestModel.getQuantity()
+        );
+
+        SendResult<String, ProductCreatedEvent> result =
+          kafkaTemplate.send("product-created-events-topic", productId, productCreatedEvent).get();
+
+        LOGGER.info("***** Returning product id");
+
+        return productId;
+    }
+}
+
+[✏️#/...ProductService]
+package com.learning.kafka.product.service;
+
+public interface ProductService {
+
+    String createProduct(CreateProductRestModel productRestModel) 💥throws Exception💥;
+
+}
+
+...
+
+[✏️#~/...ProductController]
+package com.learning.kafka.product.rest;
+
+import ...
+
+@RestController
+@RequestMapping("/products")  //http://localhost:<port>/products
+public class ProductController {
+
+    ProductService productService;
+
+    public ProductController(ProductService productService) {
+        this.productService = productService;
+    }
+
+    @PostMapping
+    public ResponseEntity<String> createProduct(@RequestBody CreateProductRestModel product)  {
+        
+        String productId = productService.createProduct(product);  
+        //⚠️❌ ProductsService.createProduct(...) throws Exception
+        
+        return ResponseEntity.status(HttpStatus.CREATED).body(productId);
+    }
+}
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Producer: Handle Exception in Rest Controller
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[✏️#~/...ProductController]
+package com.learning.kafka.product.rest;
+
+import ...
+
+@RestController
+@RequestMapping("/products")  //http://localhost:<port>/products
+public class ProductController {
+
+    ProductService productService;
+
+    public ProductController(ProductService productService) {
+        this.productService = productService;
+    }
+
+    @PostMapping
+    public ResponseEntity<String> createProduct(@RequestBody CreateProductRestModel product)  {
+        
+        try{
+            String productId = productService.createProduct(product);  
+            //⚠️❌ ProductsService.createProduct(...) throws Exception
+        } catch(Exception exc) {
+            exc.printStackTrace();
+        }
+        
+        return ResponseEntity.status(HttpStatus.CREATED).body(productId);
+    }
+}
+~
+🧐🕵️🔎 Printing Java error stacktrace into a log file does NOT help much here,
+Since we need to let Client application to know that an error took place.
+ -> So instead of printing the error stacktrace, let's return a custom error message in JSON format
+ => For that let's create an ErrorMessage class
+
+
+[✏️#~/...ErrorMessage]
+@NoArgsConstructor
+@AllArgsConstructor
+@Getters
+@Setters
+public class ErrorMessage {
+    private Date timeStamp;
+    private String message;
+    private String details;
+}
+~
+This ErrorMessage class will be converted into JSON string and it will be returned back in the HTTP response body.
+So, here I'll define the fields that I want to return in the JSON object
+
+
+[✏️#~/...ProductController]
+package com.learning.kafka.product.rest;
+
+import ...
+import java.util.Date;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+@RestController
+@RequestMapping("/products")  //http://localhost:<port>/products
+public class ProductController {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+
+    ProductService productService;
+
+    public ProductController(ProductService productService) {
+        this.productService = productService;
+    }
+
+    @PostMapping
+    public ResponseEntity<Object> createProduct(@RequestBody CreateProductRestModel product)  {
+        
+        try{
+            String productId = productService.createProduct(product);  
+            //⚠️❌ ProductsService.createProduct(...) throws Exception
+        } catch(Exception exc) {
+            //exc.printStackTrace();
+            LOGGER.error(e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                   .body(new ErrorMessage(new Date(), e.getMessage(), "/products"));
+        }
+        
+        return ResponseEntity.status(HttpStatus.CREATED).body(productId);
+    }
+}
+~
+Notice we're returning ResponseEntity<Object> ...
+This way if exception takes place we'll return ErrorMessage, in case NO exception we'll return productId
+-> Spring Framework behinds the scenes transforms the object into a JSON for us
+...
+In case you want to log the stacktrace instead of calling .printStackTrace();   
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Producer: Logging Record Metadata Information
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[✏️#~/...ProductServiceImpl]
+@Service
+public class ProductServiceImpl implements ProductService {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+
+    KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate;
+
+    public ProductServiceImpl(KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate) {
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
+    @Override 
+    public String createProduct(CreateProductRestModel productRestModel) 💥throws Exception💥 {
+        String productId = UUID.randomUUID().toString();
+        //TODO: Persist Product Details into database table before publishing an Event
+
+        ProductCreatedEvent productCreatedEvent = new ProductCreatedEvent(
+            productId,
+            productRestModel.getTitle(),
+            productRestModel.getPrice(),
+            productRestModel.getQuantity()
+        );
+
+        LOGGER.info("Before publishing a ProductCreatedEvent");
+
+        SendResult<String, ProductCreatedEvent> result =
+          kafkaTemplate.send("product-created-events-topic", productId, productCreatedEvent).get();
+        
+        LOGGER.info("Partition: " + result.getRecordMetadata().partition());
+        LOGGER.info("Topic: " + result.getRecordMetadata().topic());
+        LOGGER.info("Offset: " + result.getRecordMetadata.offset());
+
+        LOGGER.info("***** Returning product id");
+
+        return productId;
+    }
+}
+~
+🧐🕵️🔎 From .getRecordMetadata() method we can extract -> [partition | topic | offset | timestamp]
+ -> Very useful for Debugging & Monitoring purposes
+  o Offset track position of record in Topic Partition
+  o timestamp to measure latency or throughput of the producer 
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Producer Synchronous: [DEMO]
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[terminal]
+$ ./bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic product-created-events-topic --property print.key=true|
+
+...
+
+[IntelliJ]
+ProductsMicroservice
+  > ▶️ ProductsMicroserviceApplication
+
+
+~
+
+[POSTMAN]
+[POST] http://localhost:{PORT}/products
+Params | Authorization | Headers | ✅Body | Pre-request Script | Tests | Settings
+none | form-data | x-www-form-urlencoded | ✅raw | binary | GraphQL | 💥JSON
+~
+{
+    "title": "iPhone11",
+    "price": 800,
+    "quantity": 19
+}
+...
+✅Body | Cookies | Headers(5) | Test Results                 Status: 201 Created  Time: 236 ms   Size: 205 B
+Pretty | Raw | Preview | Visualize | Text 
+ {productId}
+
+
+...
+
+
+[terminal]
+$ ./bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic product-created-events-topic --property print.key=true
+{productId}  {"title": "iPhone11", "price": 800, "quantity": 19}
+
+
+...
+
+
+[IntelliJ]
+ProductsMicroservice
+  > ▶️ ProductsMicroserviceApplication
+~
+[Producer clientId=producer-1] Instantiated and  idempotent producer
+Kafka version: 3.6.0
+Kafka commitId: {commitId}
+Kafka startTimeMs: {startTime}
+[Producer clientId=producer-1] Cluster ID: {clusterID}
+[Producer clientId=producer-1]  ProducerId set to 1000 with epoch 0
+Partition: 2
+Topic: product-created-events-topic
+Offset: 0
+***** Returning Product ID

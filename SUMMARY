@@ -131,3 +131,51 @@ and then use it to start/stop multiple Docker containers at the same time
 What is the difference between LISTENERS & ADVERTISED_LISTENERS❓
  -> KAFKA_CFG_LISTENERS is used by the own Broker Server
  -> KAFKA_CFG_ADVERTISED_LISTENERS is used by Producers/Consumers
+
+
+
+
+
+~
+
+
+
+
+
+📢 S07: Acknowledgement & Retries
+=============================================================================================================================PARTI
+
+📝 PARTION   -> PARALLELISM, ORDERING, SCALABILITY AND FAULT TOLERANCE
+----------
+When a producer sends a message, it chooses the partition based on:
+ o A key (Consistent hashing of the key)
+ o Round-robin (If no key is specified)
+ o A custom partitioner (optional)
+...
+🧠 Note: Messages with the same key go to the same partition → important for ordering.
+
+What does Round Robin means❓
+Round Robin in Kafka refers to a partitioning and assignment strategy that aims to 
+distribute messages or partitions evenly across available resources.
+
+~
+
+📝 REPLICAS  -> REDUNDANCY, RESILIENCY
+----------
+
+What is the difference between Replicas and In-Sync Replicas (ISR)❓
+¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨
+A REPLICA is a copy of a Kafka partition. It can be either a Leader or Follower.
+ -> Includes all brokers that have a copy of the partition’s data — regardless of whether they are up-to-date or not.
+..
+IN-SYNC REPLICAS is the subset of replicas that are fully caught up with the leader.
+
+
+Properties related to ISR:
+¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨
+ -> min.insync.replicas: Minimum number of ISR members that must acknowledge a write for it to be considered committed.
+ -> replica.lag.time.max.ms: Max time a follower can be behind before being removed from ISR.
+
+~
+
+Acknowledgement is about RELIABILITY
