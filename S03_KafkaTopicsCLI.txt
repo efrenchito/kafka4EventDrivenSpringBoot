@@ -36,7 +36,7 @@
 🧐🕵️🔎 We can access to 'kafka-topics.sh' shell script by accessing kafka/bin/ folder
  -> Then we can create|list|describe|modify|delete topics with it
 
-$ ./bin/kafka-topics.sh --create --topic topic1 --partitions 3 --replication.factor 3 --bootstrap-server localhost:9092
+$ ./bin/kafka-topics.sh --create --topic topic1 --partitions 3 --replication-factor 1 --bootstrap-server localhost:9092
 =======================================================================================================================================
 Kafka topic CLI is used to manage and interact with topics within Kafka cluster using command line interface.
 
@@ -59,7 +59,7 @@ kafka-topics.sh
 
 
 
-$ ./bin/kafka-topics.sh --create --topic topic1 --partitions 3 --replication.factor 3 --bootstrap-server localhost:9092
+$ ./bin/kafka-topics.sh --create --topic topic1 --partitions 3 --replication.factor 1 --bootstrap-server localhost:9092
 
 
 
@@ -110,7 +110,7 @@ Created topic topic1.
 $ ./bin/kafka-topics.sh --create --topic 💥topic2 --partitions 3 --replication.factor 3 --bootstrap-server localhost:9092, localhost:9094
 Created topic topic2.
 
-🧐🕵️🔎 
+🧐🕵️🔎 >>>
 #1 You can NOT have topics with the same Topic name
 #2 Topic names should be meaningful
 🧨⚠️🤯 Topic names can NOT have special characters (Only characters and digits)

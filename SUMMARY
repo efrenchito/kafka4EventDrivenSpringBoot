@@ -179,3 +179,31 @@ Properties related to ISR:
 ~
 
 Acknowledgement is about RELIABILITY
+
+
+
+
+
+📢 S09: Kafka Consumer
+=============================================================================================================================PARTI
+In order to declare a Microservice as a Kafka Consumer
+We create our Spring Boot project adding `[MESSAGING] Spring for Apache Kafka` as dependency
+Then create a new class annotated as @Component and use annotations below 👇
+ -> @KafkaListener(topics = {"topic1", "topic2"}) - Class level annotation
+ -> @KafkaHandler - Method level annotation
+🧐🕵️🔎 @KafkaListener can be either a {Class|Method}-level annotation
+ -> We've used it as a Class level annotation to support multiple Topics within this class
+ -> The method will define the target Topic by taking as argument the Target type expected for that topic
+
+...
+
+
+When having multiple Microservices that require the same Classes
+ -> Create an additional Project
+ +  [pom.xml]
+     -> Remove NO needed dependencies 
+      ❌  org.springframework.boot:spring-boot-starter
+      ❌  org.springframework.boot:spring-boot-starter-test
+     -> Remove build section
+ +  Remove src/main/java/.../Application & src/test/java/...ApplicationTest.java 
+ -> Copy & Paste class librarire required by multiple Projects

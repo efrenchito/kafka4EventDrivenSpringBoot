@@ -39,7 +39,7 @@ The main use of Kafka console consumer is to fetch or display messages from Kafk
 
 Notice when reading Kafka messages you can:
  o Read new messages only
- o Read all messages from the beginning
+ o Read all messages from the beginning 
 
 ...
 

@@ -839,6 +839,7 @@ is that to configure key and value serializers, I need to type complete name of 
 its package name.
 
 
+[✏️#~/...KafkaConfig.java]
 @Configuration
 public class KafkaConfig {
 

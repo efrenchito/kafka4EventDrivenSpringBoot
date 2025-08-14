@@ -261,7 +261,7 @@ log.dirs=/tmp/server-2/kraft-combined-logs/
 [✏️#~/..server-3.properties]
 process.roles=broker,controller
 node.id=3
-listeners=PLAINTEXT://:9095, CONTROLLER://:9097
+listeners=PLAINTEXT://:9096, CONTROLLER://:9097
 controller.quorum.voters=1@localhost:9093,2@localhost:9095,3@localhost:9097
 advertised.listeners=PLAINTEXT://:9096
 log.dirs=/tmp/server-3/kraft-combined-logs/
@@ -277,8 +277,9 @@ log.dirs=/tmp/server-3/kraft-combined-logs/
  -> listeners need to use a different PORT number
 
 
-
-
+SERVER1 : nodeId=1
+Broker | Controller
+90
 
 ~
 

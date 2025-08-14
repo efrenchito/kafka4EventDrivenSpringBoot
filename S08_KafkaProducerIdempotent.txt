@@ -1,0 +1,246 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgment & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handle Deserializer Errors
+📝 S11 : Kafka Consumer - Exceptions and Retries
+📝 S12 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S13 : Kafka Consumer - Idempotency
+📝 S14 : Apache Kafka and Database Transactions
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 08 - Kafka Producer - Idempotency
+=======================================================================================================================================
+
+🚀 Kafka Producer Idempotent - Introduction
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+🧐🕵️🔎 An Idempotent Producer avoids duplicated messages in the Kafka Topic even in the presence of failures and retries.
+~
+enable.idempotence=true
+[application.properties] spring.kafka.producer.properties.enable.idempotence=true
+@Bean props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+=======================================================================================================================================
+
+🧐🕵️🔎 An Idempotent Producer avoids duplicated messages in the Kafka Topic even in the presence of failures and retries.
+
+
+ ❌ NO Idempotency enabled
+ ---------------
+
+    Producer                               Broker                 Kafka Topic
+       |                                      |                   [ A | A | ... ]
+       |      1. Send Message [A]             |
+       | -----------------------------------> | \
+       |                                      |   2. Store
+       |                  3. Acknowledgement  | /
+       | <- X ------------------------------- |
+       |                                      |
+       |      4. Retry Send Message [A]       |
+       | -----------------------------------> | \
+       |                                      |   5. Store
+       |                                      | /
+       |                  6. Acknowledgement  | 
+       | <- OK ------------------------------ |
+       |                                      |
+
+
+✅ Idempotency enabled
+ ---------------
+
+     Producer                               Broker                 Kafka Topic
+       |                                      |                   [ A | ...      ]
+       |      1. Send Message [A]             |
+       | -----------------------------------> | \
+       |                                      |   2. Store
+       |                  3. Acknowledgement  | /
+       | <- X ------------------------------- |
+       |                                      |
+       |      4. Retry Send Message [A]       |
+       | -----------------------------------> | \
+       |                                      |   5. Store
+       |                                      | /
+       |                  6. Acknowledgement  | 
+       | <- OK ------------------------------ |
+       |                                      |
+
+
+enable.idempotence=true
+[application.properties] spring.kafka.producer.properties.enable.idempotence=true
+@Bean props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+
+
+🧐🕵️🔎 By default Idempotency is enabled...
+However it's still recommended to explicitly set this property to true
+Otherwise in case of conflicting values this property can be disabled automatically for us
+ -> asks=all  |  retries=2147483647  |  max.in.flight.requests.per.connection=5
+
+🧨⚠️🤯 For Idempotence to work...
+ -> acks=all
+ -> retries must be greater than zero
+ -> max.in.flight.requests must be <= 5
+ => If those values are conflicting then you might get a ConfigException ⚠️❌
+
+
+[application.properties]
+spring.kafka.producer.properties.enable.idempotence=true
+
+spring.kafka.producer.properties.acks=all
+spring.kafka.producer.properties.retries=2147483647
+spring.kafka.producer.properties.max.in.flight.requests.per.connection=5
+~
+🧐🕵️🔎 'max.in.flight.requests.per.connection' means that Kafka Producer 
+ -> Can send up to five requests or batches of messages to broker at the same time without waiting for acknowledgements
+ => This can improve throughput and performance of your broker. 
+    But it also introduces risk of message reordering in case of failures and retries
+    ..that's why it's important to keept it <= 5, to maintain the right order and avoid messages loss
+
+
+
+
+
+~
+
+
+
+
+🚀 Enable Kafka Producer Idempotent - application.properties
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[✏️#~/...application.properties]
+server.port=0
+spring.kafka.producer.boostrap-servers=localhost:9092
+spring.kafka.producer.key-serializer=org.apache.kafka.common.serialization.StringSerializer
+spring.kafka.producer.value-serializer=org.springframework.kafka.support.serializer.JsonSerializer
+spring.kafka.producer.acks=all     #default => 1    💥
+
+#spring.kafka.producer.retries=10   #default => 2147483647  💥         
+#spring.kafka.producer.properties.retry.backoff.ms=1000  #(1 Second) 
+spring.kafka.producer.properties.delivery.timeout.ms=120000          
+spring.kafka.producer.properties.linger.ms=0                         
+spring.kafka.producer.properties.request.timeout.ms=30000
+
+spring.kafka.producer.properties.enable.idempotence=true  💥
+spring.kafka.producer.properties.max.in.flight.requests.per.connection=5  💥
+
+
+
+
+~
+
+
+
+
+🚀 Enable Kafka Producer Idempotent - Spring Bean
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[✏️#~/...KafkaConfig.java]
+@Configuration
+public class KafkaConfig {
+
+    @Value("${spring.kafka.producer.bootstrap-servers}")
+    private String bootstrapServers;
+
+    @Value("${spring.kafka.producer.key-serializer}")
+    private String keySerializer;
+
+    @Value("${spring.kafka.producer.value-serializer}")
+    private String valueSerializer;
+
+    @Value("${spring.kafka.producer.acks}")
+    private String acks;
+
+    @Value("${spring.kafka.producer.properties.delivery.timeout.ms}")
+    private String deliveryTimeout;
+
+    @Value("${spring.kafka.producer.properties.linger.ms}")
+    private String linger;
+
+    @Value("${spring.kafka.producer.properties.request.timeout.ms}")
+    private String requestTimeOut;
+
+    @Value("${spring.kafka.producer.properties.enable.idempotence}")  //💥
+    private boolean idempotence;                                      //💥
+
+    @Value("${spring.kafka.producer.properties.max.in.flight.requests.per.connection}")  //💥
+    private integer inflightRequests;
+
+    Map<String, Object> producerConfig() {
+        Map<String, Object> config = new HashMap<>();
+
+        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, keySerializer);
+        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, valueSerializer);
+        config.put(ProducerConfig.ACKS_CONFIG, acks);  //💥
+        config.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, deliveryTimeout);
+        config.put(ProducerConfig.LINGER_MS_CONFIG, linger);
+        config.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, requestTimeout);
+        config.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, idempotence);  //💥
+        config.put(ProducerConfig.MAX_INFLIGHT_REQUESTS_PER_CONNECTION, inflightRequests);  //💥
+        //config.put(ProducerConfig.RETRIES_CONFIG, Integer.MAX_VALUE);  //💥
+
+    }
+
+
+    @Bean
+    ProducerFactory<String, ProductCreatedEvent> producerFactory() {
+        return new DefaultKafkaProducerFactory<>(producerConfigs);
+    }
+
+    @Bean
+    KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate() {
+        return new KafkaTemplate<String, ProductCreatedEvent>(producerFactory());
+    }
+
+}
+~
+🧨⚠️🤯 For Idempotence to work...
+ -> acks=all
+ -> retries must be greater than zero
+ -> max.in.flight.requests must be <= 5
+ => If those values are conflicting then you might get a ConfigException ⚠️❌
+
+
+[IntelliJ]
+ProductsMicroservice
+  > ▶️ ProductsMicroserviceApplication
+
+
+[POSTMAN]
+[POST] http://localhost:{PORT}/products
+Params | Authorization | Headers | ✅Body | Pre-request Script | Tests | Settings
+none | form-data | x-www-form-urlencoded | ✅raw | binary | GraphQL | 💥JSON
+~
+{
+    "title": "iPhone11",
+    "price": 800,
+    "quantity": 19
+}
+...
+✅Body | Cookies | Headers(5) | Test Results                 Status: 500 Internal Server Error  Time: 10.04 s   Size: 303 B
+Pretty | Raw | Preview | Visualize | Text 
+{
+    "timestamp": 2025-08-02T15:21:28.184+00:00
+    "message": "org.springframework.kafka.core.KafkaProducerException: Failed to send",
+    "details": "/products"
+}

@@ -1,0 +1,525 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgment & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handle Deserializer Errors
+📝 S11 : Kafka Consumer - Exceptions and Retries
+📝 S12 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S13 : Kafka Consumer - Idempotency
+📝 S14 : Apache Kafka and Database Transactions
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 09 - Kafka Consumer - Spring Boot Microservice
+=======================================================================================================================================
+
+🚀 Kafka Consumer - Introduction
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+In this lesson we'll create Kafka Consumers as another Microservice
+🧐🕵️🔎 When needed you can have multiple Kafka consumes running...
+ -> This way each Kafka Consumers will receive their own copy of a Message
+
+
+                                                                  ____        SMS
+                                                                 /        Notification
+                                                                /         MicroService
+                                                               /           <Consumer> 
+                                                              /
+      Products         Publish                        Consume               Email 
+    Microservice  ------------------>    Topic    --------------->       Notification
+     <Producer>        (Message)                     (Message)           Microservice
+                                                              \           <Consumer>
+                                                               \
+                                                                \            Push
+                                                                 \____    Notification
+                                                                          MicroService
+                                                                           <Consumer> 
+
+
+🧨⚠️🤯 As mentioned before...
+So, a Kafka Topic defines the number of Partitions. Each message will be stored in its own partition and each Partition 
+will store its own set of Messages. You must decide yourself how many partitions to create for a Topic.
+
+           Kafka Topic (Product-created-event-topic)
+Partition-0| 0 | 1 | 2 | 3 | 4 | 5 | n 
+Partition-1| 0 | 1 | 2 |   |   |   | n
+Partition-2| 0 | 1 | 2 | 3 | 4 |   | n
+
+When you start a Kafka Consumer Microservice, it'll be pulling messages from Kafka Topic at a regular time interval. 
+ -> This interval can be configured through configuration properties.
+
+...
+
+🧐🕵️🔎 Kafka Consumers will read data from Partition
+When Kafka consumer reads messages from partitions, it reads them in parallel.
+There is no order guarantee about which messages and which partitions will be read first, 
+ -> However it does read messages in order within a single partition.
+
+🧨⚠️🤯 Messages within a single partition are always read in order
+ -> But there is no order guarantee between partitions.
+
+🧐🕵️🔎 If you have a single application, then it will read messages from all three partitions.
+But if you have three consumers running, then each consumer will be assigned to read messages from one partition only.
+  -> If you need to scale up your application and you want to start more instances of the same consumer microservice,
+     ..then this instances of Kafka consumer, they can be grouped together and work as a group.
+  -> Each consumer reading messages from its own partition. This will help you process messages from Kafka topic faster.
+
+
+🧨⚠️🤯 Once Kafka consumer reads message from Kafka topic, it does NOT delete messageS from the topic.
+ -> The message remains in the topic until it is deleted from there automatically.
+ -> By default, Kafka Topic is configured to keep messages for 168 hours (7 DAYS)
+ => If needed, you can change this value using Configuration properties file.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Creating a New Spring Boot Application
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+⚓ https://start.spring.io
+
+Language:  Java
+Packaging: Jar
+Version: 17
+
+Project:  Maven
+Group: com.learning.kafka
+Artifact: EmailNotificationMicroservice
+Name: Artifact: EmailNotificationMicroservice
+Description: Email Notification Microservice
+Package name: com.learning.kafka.emailnotification
+
+Spring Boot
+ Version: 3+
+
+Dependencies: 
+ o Spring Web [WEB]
+ o Spring for Apache Kafka [MESSAGING]
+
+    => Finish
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Consumer : Configuration Properties
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+🧐🕵️🔎 server.port=0  -> Assign a port randomly
+
+[✏️#~/...application.properties]
+server.port=0
+spring.kafka.consumer.boostrap-servers=localhost:9092
+spring.kafka.consumer.key-deserializer=org.apache.kafka.common.serialization.StringDeserializer
+spring.kafka.consumer.value-deserializer=org.springframework.kafka.support.serializer.JsonDeserializer
+spring.kafka.consumer.group-id=product-created-events
+spring.kafka.consumer.properties.spring.json.trusted.packages=*
+=======================================================================================================================================
+
+🧐🕵️🔎 port number set to zero will make my email notification microservice start up on a random port number.
+🧐🕵️🔎 `bootstrap-servers` property, it is used to specify a list of bootstrap servers.
+ -> A Bootstrap Server is used for Initial Connection to Kafka cluster.
+ -> Notice this is very similar to the one we use for a producer
+ => However here we're using 'consumer' instead of 'producer'
+~
+🧨⚠️🤯 One server is enough, but if you have more brokers in the cluster...
+ -> Then it is better to provide at least two bootstrap servers here.
+
+🧐🕵️🔎 Consumer Group in Kafka... 
+ -> Is a group of Kafka Consumers Microservices that work together to consume messages from a topic.
+ => All microservices that belong to the same group. They'll work together to process messages related to a Topic
+
+
+🧐🕵️🔎 'spring.json.trusted.packages' property specify one or more packages that are considered trustsnñr for deserialization when processing JSON messages.
+  -> If you know the application that publishes events is trustable
+  => Then you can allow any package and use '*' asterix instead of a package name.
+  ✅ For security reasons it's adivisable to use least-privilege principle specifying a particular package
+
+
+[✏️#~/...application.properties]
+server.port=0
+spring.kafka.consumer.boostrap-servers=localhost:9092
+spring.kafka.consumer.key-deserializer=org.apache.kafka.common.serialization.StringDeserializer
+spring.kafka.consumer.value-deserializer=org.springframework.kafka.support.serializer.JsonDeserializer
+spring.kafka.consumer.group-id=product-created-events
+spring.kafka.consumer.properties.spring.json.trusted.packages=*
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Consumer : @KafkaEventListener and @KafkaHandler annotations
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+Let's create a new class that will be used to handle or consume 'Product Created Events'
+
+[IntelliJ] > EmailNotificationMicroservice
+
+[✏️#~/...ProductCreatedHandler]
+package com.learning.kafka.emailnotification.handler;
+
+import org.springframework.stereotype.Component;
+import org.springframework.kafka.annotation.KafkaListener;
+
+@Component
+@KafkaListener(topics = "product-created-event-topic")
+public class ProductCreatedHandler {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+
+    //@KafkaListener(topics = "product-created-event-topic")
+    @KafkaHandler
+    public void handle(ProductCreatedEvent productCreatedEvent) {
+        LOGGER.info("Received a new Event: " + productCreatedEvent.getTitle());
+    }
+
+}
+~
+🧐🕵️🔎 @KafkaListener annotation can be used as Class-level / Method-level annotation
+ -> It's used to mark a Class/Method as target for incoming messages from Kafka Topic
+...
+🧨⚠️🤯 @KafkaListener can be configured to listen to multiple topics
+e.g. @KafkaListener(topics = {"topic1", "topic2"})
+ -> A single Kafka Consumer can consume messages from multiple topics
+
+🧐🕵️🔎 If the custom class is going to consume messages from multiple Topics 
+ -> we can use @KafkaListener as Class-level annotation 
+ => In this case methods should be annotated with @KafkaHandler
+...
+🧨⚠️🤯 To specify which particular event your method is listening to
+ -> Be aware of declaring the Event type expected as argument within the method
+
+~
+
+@KafkaHandler method wont be invoked by ourselves
+This method will be called automatically as soon as Kafka Consumer receives a new message from Kafka Topic
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Consumer : Creating the "Core" Module
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+Let's create a new Project...
+This will be a centralized or shared project that both of my Microservices (Producer/Consumer) will use
+ -> Later on we'll add this project as Maven dependency to both Microservices
+
+⚓ https://start.spring.io
+
+Language:  Java
+Packaging: Jar
+Version: 17
+
+Project:  Maven
+Group: com.learning.kafka
+Artifact: Core
+Name: Artifact: Core
+Description: Shared Core Library
+Package name: com.learning.kafka.core
+
+Spring Boot
+ Version: 3+
+
+Dependencies:
+
+  => Finish
+
+
+📝 Remove NO needed elements from Project
+---------------
+
+[IntelliJ] > Core
+
+[✏️#~/...Core]
+  ❌ src/main/java/.../CoreApplication.java
+  ❌ src/test/java/.../CoreApplicationTest.java
+
+
+[✏️#~/...pom.xml]
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="...">
+  <modelVersion>4.0.0</modelVersion>
+  <parent> ...  </parent>
+  <groupId>com.learning.kafka</groupId>  💥
+  <artifactId>core</artifactId>          💥
+  <version>0.0.1-SNAPSHOT</version>      💥
+  ...
+  <dependencies>
+    <!-- <dependency> -->
+      <!-- <groupId>org.springframework.boot</groupId> -->
+      <!-- <artifact>spring-boot-starter</artifactId> -->
+    <!-- </dependency> -->
+    <!-- <dependency> -->
+      <!-- <groupId>org.springframework.boot</groupId> -->
+      <!-- <artifact>spring-boot-starter-test</artifactId> -->
+      <!-- <scope>test</scope> -->
+    <!-- </dependency> -->
+  </dependency>  
+  <!-- <build> 
+         <plugins>
+           <plugin> ...-->
+    ...
+  ...
+</project>
+
+
+✏️>>> Copy & Paste ProductCreatedEvent from 'ProductsMicroservice'  to  'Core'
+✅ src/main/java/.../ProductCreatedEvent.java
+    ...
+
+
+[terminal]
+$ mvn clean install
+~
+This will add 'Core' dependency to your Maven HOME directory
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Consumer : Adding Core Project as Dependency to other Microservices
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+Copy Core project coordinates form Core/pom.xml
+
+[IntelliJ]  <Core>
+[✏️#~/...pom.xml]
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="...">
+  <modelVersion>4.0.0</modelVersion>
+  <parent> ...  </parent>
+  <groupId>com.learning.kafka</groupId>  💥
+  <artifactId>core</artifactId>          💥
+  <version>0.0.1-SNAPSHOT</version>      💥
+  ...
+
+
+[IntelliJ]  <ProductService>
+[✏️#~/...pom.xml]
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="...">
+  <modelVersion>4.0.0</modelVersion>
+  <parent> ...  </parent>
+  ...
+  <dependencies>
+    <dependency>
+      <groupId>com.learning.kafka</groupId>  ✅
+      <artifactId>core</artifactId>          ✅
+      <version>0.0.1-SNAPSHOT</version>      ✅
+    </dependency>  
+
+
+❌ Remove src/main/java/.../ProductCreatedEvent
+
+✅ Import ProductCreatedEvent to  💥ProductServiceImpl💥
+  ...
+  ..
+  .
+
+
+~
+
+
+[IntelliJ]  <EmailNotificationService>
+[✏️#~/...pom.xml]
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="...">
+  <modelVersion>4.0.0</modelVersion>
+  <parent> ...  </parent>
+  ...
+  <dependencies>
+    <dependency>
+      <groupId>com.learning.kafka</groupId>  ✅
+      <artifactId>core</artifactId>          ✅
+      <version>0.0.1-SNAPSHOT</version>      ✅
+    </dependency>  
+
+
+✅ Import ProductCreatedEvent to  💥'ProductCreatedEventHandler'💥
+  ...
+  ..
+  .
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Consumer : @KafkaListener + @KafkaHandler Trying how it works [Demo]
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+Let's run my Kafka producer and Kafka Consumer microservices.
+I will then publish event and we'll check if the consumer microservice was able to receive this event.
+So let's it try now.
+
+
+[terminal1]
+$ ./bin/kafka-server-start.sh config/kraft/server-1.properties
+
+[terminal2]
+$ ./bin/kafka-server-start.sh config/kraft/server-2.properties
+
+[termina3]
+$ ./bin/kafka-server-start.sh config/kraft/server-3.properties
+
+
+...
+
+
+[IntelliJ]
+ProductsMicroservice
+  > ▶️ ProductsMicroserviceApplication
+
+...
+
+[IntelliJ]
+EmailNotificationMicroservice
+  > ▶️ EmailNotifiactionMicroserviceApplication
+
+
+~
+
+
+[POSTMAN]
+[POST] http://localhost:{PORT}/products
+Params | Authorization | Headers | ✅Body | Pre-request Script | Tests | Settings
+none | form-data | x-www-form-urlencoded | ✅raw | binary | GraphQL | 💥JSON
+~
+{
+    "title": "iPhone11",
+    "price": 800,
+    "quantity": 19
+}
+...
+✅Body | Cookies | Headers(5) | Test Results                 Status: 201 Created  Time: 236 ms   Size: 205 B
+Pretty | Raw | Preview | Visualize | Text 
+ {productId}
+
+
+[IntelliJ]
+EmailNotificationMicroservice
+  > ▶️ EmailNotifiactionMicroserviceApplication
+~
+product-created-events: partitions assigned: [product-created-events-topic-0, product-created-events-topic-1, product-created-events-topic-2] 
+Received a new event: iPhone11
+|
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Consumer : Spring Bean Configuration
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+Let's configure Kafka Consumer in Java Code using Spring Bean
+
+[IntelliJ]
+<EmailNotificationMicroservice>
+[✏️#~/...KafkaConsumerConfiguration]
+package com.learning.kafka.emailnotification;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
+
+import org.springframework.kafka.clients.consumer.ConsumerConfig;
+import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
+
+import java.util.Map;
+import java.util.HashMap;
+
+
+
+@Configuration
+public class KafkaConsumerConfiguration {
+
+    private Environment environment;
+
+    public KafkaConsumerConfiguration(Environment environment) {
+        this.environment = environment;
+    }
+
+    @Bean
+    public ConsumerFactory<String, Object> consumerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, environment.getProperty("spring.kafka.consumer.bootstrap-servers"))
+        return new DefaultKafkaConsumerFactory<>(config);
+    }
+
+}
+~
+🧐🕵️🔎 We don't need to call consumerFactory() method ourselves...
+ -> Spring Framework will invoke this method when our application starts up
+...
+🧐🕵️🔎 ConsumerFactory is a Spring Kafka Interface used to create instances of Kafka Consumer
+ -> In this case we're returning a DefaultKafkaConsumerFactory which provides a default implementation of create consumer
+    ..It takes a Map of Configuration Properties as input and returns an instance of Kafka Consumer
+
+🧨⚠️🤯 So, instead of providing Consumer Configuration Properties via application.properties file 
+ -> We'll now refer to them in a HashMap as Key value pairs via Environment Object
+📝 'org.springframework.core.env.Environment' it's used to represent the current Environment our application is running on
+ -> We can use it to access configuration properties and other environment specific information
+ => To access a property we use environment.getProperty("{PROPERTY-NAME}");

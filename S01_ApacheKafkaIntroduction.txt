@@ -45,7 +45,7 @@ This course is designed for Beginners on How to use Apache Kafka to build event 
 What we'll learn in this course❓
  o How Apache Kafka is used to build event driven SpringBoot Microservices.
  o Review Microservices and Apache Kafka architecture
- o Kafka components like: Topic / Kafka / Producer / Consumer / Broker ...
+ o Kafka components like: Topic / Kafka Cluster / Producer / Consumer / Broker ...
  o How to download Apache Kafka for the very first time and run it on your computer (Cluster)
  o Kafka CLI (Create Kafka Topics / Send|Read messages)
  o How Microservices use Apache Kafka to communicate with each other
