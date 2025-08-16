@@ -10,7 +10,7 @@
 📝 S07 : Kafka Producer - Acknowledgement & Retries
 📝 S08 : Kafka Producer - Idempotency
 📝 S09 : Kafka Consumer - Spring Boot Microservice
-📝 S10 : Kafka Consumer - Handle Deserializer Errors
+📝 S10 : Kafka Consumer - Handling Deserialization Errors
 📝 S11 : Kafka Consumer - Exceptions and Retries
 📝 S12 : Kafka Consumer - Multiple Consumers in a Consumer Group
 📝 S13 : Kafka Consumer - Idempotency

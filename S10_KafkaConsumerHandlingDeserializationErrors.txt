@@ -1,0 +1,382 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgment & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handling Deserialization Errors
+📝 S11 : Kafka Consumer - Exceptions and Retries
+📝 S12 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S13 : Kafka Consumer - Idempotency
+📝 S14 : Apache Kafka and Database Transactions
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 10 - Kafka Consumer - Handle Deserializer Errors
+=======================================================================================================================================
+What happens if our Kafka Topic receives a message in an unexpected format❓
+ -> This will cause a Deserialization Exception
+ -> Which if NOT handle properly, will kept our Consumer Stuck in a loop trying to process the same message again and again
+✅ To be able to recover from this situation we need to use 'ErrorHandlingDeserializer' class
+
+@Configuration
+public class KafkaConsumerConfiguration {
+
+    private Environment environment;
+
+    public KafkaConsumerConfiguration(Environment environment) {
+        this.environment = environment;
+    }
+
+    @Bean
+    public ConsumerFactory<String, Object> consumerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ConsumerConfig.GROUP_ID_CONFIG, environment.getProperty("spring.kafka.consumer.group-id"));
+        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, environment.getProperty("spring.kafka.consumer.bootstrap-servers"));
+        config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+💥      //config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
+💥      config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
+💥      config.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class);
+        config.put(JsonDeserializer.TRUSTED_PACKAGES, environment.getProperty("spring.kafka.consumer.properties.spring.json.trusted.packages"));
+        return new DefaultKafkaConsumerFactory<>(config);
+    }
+
+🧐🕵️🔎 'ErrorHandlingDeserializer' will act as a wrapper around JSON Deserializer
+ -> So, we need to specify which class will be used internally to perform the value deserialization
+ -> However if any Deserialization error happens, 'ErrorHandlingDeserializer' will handle that exception th gracefully
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+
+
+
+🚀 Kafka Consumer - Introduction
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+In this lessons, we'll learn how to configure our Kafka Consumer application so that it can recover from deserialization errors.
+
+
+                          JSON                         JSON
+ [  Products  ]   ->   Serializer   ->  Topic   ->  Deserializer   -> [Email Notification]
+  Microservice                                                            Microservice    
+   <Producer>                                                              <Consumer>
+
+
+🧐🕵️🔎 When a new Product is created...
+ -> ProductsMicroservice publishes a new 'ProductCreatedEvent'
+ => But before this 'ProductCreatedEvent' is stored in Kafka topic, it is serialized using JSON Serializer
+~
+{
+    "productId": "e9f6b0dd-1949-4f8b-b958-986305634d04b",
+    "title": "iPhone11",
+    "price": 800,
+    "quantity": 19
+}
+
+...
+
+🧐🕵️🔎 on the right side of our diagram...
+ ->  'EmailNotificationMicroservice' acts as a consumer.
+ -> It listens for 'ProductCreatedEvent' and when it reads new messages from Kafka topic
+    ..it uses JSON Deserializer to deserialize this message or convert it from JSON into Java object.
+
+
+🔎 Let's assume another team in your organization started a new Microservice  >>>
+
+                         JSON                          JSON
+ [  Products  ]   ->   Serializer   ->  Topic   ->  Deserializer   -> [Email Notification]
+  Microservice                          _                                 Microservice    
+   <Producer>                           /|                                 <Consumer>
+                                       /
+                                      /
+                         STRING      /
+[    Admin     ]   ->   Serializer   
+  Microservice
+   <Producer> 
+~
+17d8dfeb-44c3-498f-a772-2023444247b3 : approved
+
+🧨⚠️🤯 When email notification microservice pulls a message from Kafka topic
+ -> It will get error because JSON Serializer won't be able to convert this message into a 'ProductCreatedEvent' Java object.
+...
+❌ The problem with this is that....
+ o Because an error took place, the message is NOT considered as successfully consumed.
+ o The next time our 'EmailNotifiactionMicroservice' consumes message from Kafka topic
+   ..it will again get this faulty message and it will again throw exception.
+   -> So, our email notification microservice will get stuck in an endless loop
+   -> Consuming the same faulty message again and again
+   => It will keep on throwing exceptions since it cannot be deserialized 
+
+
+
+So in the next lessons...
+We'll learn how to configure our 'EmailNotifiactionMicroservice' to recover from situations like this.
+ -> Handling the exception and continue processing the Next message from Kafka topic.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Consumer - Causing a Deserialization Problem
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[IntelliJ]
+EmailNotifiactionMicroservice
+  > ▶️ EmailNotifiactionMicroserviceApplication
+
+
+[terminal]
+$ cd {WORKSPACE}/kafka
+$ ./bin/kafka-console-producer.sh
+   --bootstrap-server localhost:9092
+   --topic product-created-events-topic
+   --property "parse.key=true"
+   --property "key.separator=:"
+> 1:{asdfasdfas}
+
+
+...
+
+
+[IntelliJ]
+EmailNotifiactionMicroservice
+  > ▶️ EmailNotifiactionMicroserviceApplication
+~
+❌ Caused by: java.lang.IllegalStateException: No type information in headers and no default type
+❌ Caused by: java.lang.IllegalStateException: No type information in headers and no default type
+❌ Caused by: java.lang.IllegalStateException: No type information in headers and no default type
+. . .
+. .
+.
+...
+
+
+🧨⚠️🤯 The bad news... is my Kafka Consumer is now stuck
+ -> It cannot process other messages from the Topic
+✅ To be able recover from this situation we need to use 'ErrorHandlingDeserializer' class
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Consumer - Error Handling Deserializer
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+<EmailNotificationMicroservice>
+[✏️#~/...KafkaConsumerConfiguration]
+@Configuration
+public class KafkaConsumerConfiguration {
+
+    private Environment environment;
+
+    public KafkaConsumerConfiguration(Environment environment) {
+        this.environment = environment;
+    }
+
+    @Bean
+    public ConsumerFactory<String, Object> consumerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ConsumerConfig.GROUP_ID_CONFIG, environment.getProperty("spring.kafka.consumer.group-id"));
+        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, environment.getProperty("spring.kafka.consumer.bootstrap-servers"));
+        config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
+        config.put(JsonDeserializer.TRUSTED_PACKAGES, environment.getProperty("spring.kafka.consumer.properties.spring.json.trusted.packages"));
+        return new DefaultKafkaConsumerFactory<>(config);
+    }
+
+    @Bean
+    ConcurrentKafkaListenerContainerFactory<String, Object> kafkaListenerContainerFactory(ConsumerFactory<String, Object> ConsumerFactory) {
+       ConcurrentKafkaListenerContainerFactory<String, Object> factory = new ConcurrentKafkaListenerContainerFactory<>();
+       factory.setConsumerFactory(consumerFactory);
+
+       return factory;
+    }
+
+}
+
+...
+
+In the KafkaConsumerConfiguration.consumerFactory() method
+ -> We've configured which class to use for message key deserialization  -> config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+    ..and which class to use to deserialize message value.               -> config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
+ => If message value could NOT be deserialized, there will be exception thrown and the message will NOT be successfully consumed.
+
+✅ To handle Deserialization error so that our consumer class can move on and consume next message from the topic.
+ -> We'll need to use a different class as a value Deserializer and it is called error handling Deserializer.
+
+<EmailNotificationMicroservice>
+[✏️#~/...KafkaConsumerConfiguration]
+...
+import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
+import ...
+
+@Configuration
+public class KafkaConsumerConfiguration {
+
+    private Environment environment;
+
+    public KafkaConsumerConfiguration(Environment environment) {
+        this.environment = environment;
+    }
+
+    @Bean
+    public ConsumerFactory<String, Object> consumerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ConsumerConfig.GROUP_ID_CONFIG, environment.getProperty("spring.kafka.consumer.group-id"));
+        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, environment.getProperty("spring.kafka.consumer.bootstrap-servers"));
+        config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        //config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
+        config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, 💥ErrorHandlingDeserializer.class💥);
+        config.put(💥ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class💥);
+        config.put(JsonDeserializer.TRUSTED_PACKAGES, environment.getProperty("spring.kafka.consumer.properties.spring.json.trusted.packages"));
+        return new DefaultKafkaConsumerFactory<>(config);
+    }
+
+    @Bean
+    ConcurrentKafkaListenerContainerFactory<String, Object> kafkaListenerContainerFactory(ConsumerFactory<String, Object> ConsumerFactory) {
+       ConcurrentKafkaListenerContainerFactory<String, Object> factory = new ConcurrentKafkaListenerContainerFactory<>();
+       factory.setConsumerFactory(consumerFactory);
+
+       return factory;
+    }
+
+}
+~
+🧐🕵️🔎 'ErrorHandlingDeserializer' will act as a wrapper around JSON Deserializer
+ -> So, we need to specify which class will be used internally to perform the value deserialization
+-> However if any Deserialization error happens, 'ErrorHandlingDeserializer' will handle that exception th gracefully
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Consumer - Error Handling Deserializer [Demo]
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+Now, let's try how does 'ErrorHandlingDeserializer' work
+
+[IntelliJ]
+EmailNotifiactionMicroservice
+  > ▶️ EmailNotifiactionMicroserviceApplication
+~
+❌ Caused by: java.lang.IllegalStateException: No type information in headers and no default type
+
+🧐🕵️🔎 >>> Notice the first time we run the application it throws an exception confirming the previous message fail because of serialization
+ -> However this happens only once and our application is ready to receive new messages
+
+
+...
+
+
+✏️>>> Send Kafka Message via POSTMAN >>>
+-------------------------
+[POSTMAN]
+[POST] http://localhost:{PORT}/products
+Params | Authorization | Headers | ✅Body | Pre-request Script | Tests | Settings
+none | form-data | x-www-form-urlencoded | ✅raw | binary | GraphQL | 💥JSON
+~
+{
+    "title": "iPhone11",
+    "price": 800,
+    "quantity": 19
+}
+...
+✅Body | Cookies | Headers(5) | Test Results                 Status: 201 Created  Time: 236 ms   Size: 205 B
+Pretty | Raw | Preview | Visualize | Text 
+ {productId}
+
+
+...
+
+
+[IntelliJ]
+EmailNotifiactionMicroservice
+  > ▶️ EmailNotifiactionMicroserviceApplication
+~
+❌ Caused by: java.lang.IllegalStateException: No type information in headers and no default type
+✅ ProductCreatedEventHandler     : Received a new event:  iPhone11
+
+
+...
+
+
+[terminal]
+$ cd {WORKSPACE}/kafka
+$ ./bin/kafka-console-producer.sh
+   --bootstrap-server localhost:9092
+   --topic product-created-events-topic
+   --property "parse.key=true"
+   --property "key.separator=:"
+> 1:a@sd$fas&dfas-?\a1bD32fhd
+
+
+...
+
+
+✏️>>> Send Kafka Message via POSTMAN >>>
+-------------------------
+[POSTMAN]
+[POST] http://localhost:{PORT}/products
+Params | Authorization | Headers | ✅Body | Pre-request Script | Tests | Settings
+none | form-data | x-www-form-urlencoded | ✅raw | binary | GraphQL | 💥JSON
+~
+{
+    "title": "iPhone11(2)",
+    "price": 800,
+    "quantity": 19
+}
+...
+✅Body | Cookies | Headers(5) | Test Results                 Status: 201 Created  Time: 236 ms   Size: 205 B
+Pretty | Raw | Preview | Visualize | Text 
+ {productId}
+
+
+...
+
+
+[IntelliJ]
+EmailNotifiactionMicroservice
+  > ▶️ EmailNotifiactionMicroserviceApplication
+~
+❌ Caused by: java.lang.IllegalStateException: No type information in headers and no default type
+✅ ProductCreatedEventHandler     : Received a new event:  iPhone11
+❌ Caused by: java.lang.IllegalStateException: No type information in headers and no default type
+✅ ProductCreatedEventHandler     : Received a new event:  iPhone11(2)

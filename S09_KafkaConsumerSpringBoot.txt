@@ -10,7 +10,7 @@
 📝 S07 : Kafka Producer - Acknowledgment & Retries
 📝 S08 : Kafka Producer - Idempotency
 📝 S09 : Kafka Consumer - Spring Boot Microservice
-📝 S10 : Kafka Consumer - Handle Deserializer Errors
+📝 S10 : Kafka Consumer - Handling Deserialization Errors
 📝 S11 : Kafka Consumer - Exceptions and Retries
 📝 S12 : Kafka Consumer - Multiple Consumers in a Consumer Group
 📝 S13 : Kafka Consumer - Idempotency
@@ -476,6 +476,28 @@ Let's configure Kafka Consumer in Java Code using Spring Bean
 
 [IntelliJ]
 <EmailNotificationMicroservice>
+[✏️#~/...application.properties]
+spring.kafka.consumer.group-id=product-created-events
+spring.kafka.consumer.bootstrap-servers=localhost:9092,localhost:9094
+spring.kafka.consumer.key-deserializer=org.apache.kafka.common.serialization.StringDeserializer
+spring.kafka.consumer.value-deserializer=org.springframework.kafka.support.serializer.JsonDeserializer
+spring.kafka.consumer.properties.spring.json.trusted.packages=com.learning.kafka.product.service
+~
+🧐🕵️🔎 Notice in this case we're defining the properties bellow:
+group-id | bootstrap-servers | key-deserializer | value-deserializer | json.trusted.packages
+ -> Since we are dealing with a Consumer we're using  💥key-deserializer💥 & 💥value-deserializer💥
+...
+🧨⚠️🤯 The value expected here is marked as a Json (Therefore the value-deserializer is JsonDeserializer)
+ -> Notice we can define the list of trusted packages this values can come from
+ => We've selected the package defined at the Producer (ProductCreatedEvent)
+🔎>>> 
+<ProductsMicroservice>
+[✏️#~/...ProductCreatedEvent]
+package com.learning.kafka.product.service;
+
+
+
+<EmailNotificationMicroservice>
 [✏️#~/...KafkaConsumerConfiguration]
 package com.learning.kafka.emailnotification;
 
@@ -488,10 +510,11 @@ import org.springframework.kafka.clients.consumer.ConsumerConfig;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.springframework.kafka.support.serializer.JsonDeserializer;
+
 import java.util.Map;
 import java.util.HashMap;
-
-
 
 @Configuration
 public class KafkaConsumerConfiguration {
@@ -505,7 +528,11 @@ public class KafkaConsumerConfiguration {
     @Bean
     public ConsumerFactory<String, Object> consumerFactory() {
         Map<String, Object> config = new HashMap<>();
-        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, environment.getProperty("spring.kafka.consumer.bootstrap-servers"))
+        config.put(ConsumerConfig.GROUP_ID_CONFIG, environment.getProperty("spring.kafka.consumer.group-id"));
+        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, environment.getProperty("spring.kafka.consumer.bootstrap-servers"));
+        config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
+        config.put(JsonDeserializer.TRUSTED_PACKAGES, environment.getProperty("spring.kafka.consumer.properties.spring.json.trusted.packages"));
         return new DefaultKafkaConsumerFactory<>(config);
     }
 
@@ -523,3 +550,233 @@ public class KafkaConsumerConfiguration {
 📝 'org.springframework.core.env.Environment' it's used to represent the current Environment our application is running on
  -> We can use it to access configuration properties and other environment specific information
  => To access a property we use environment.getProperty("{PROPERTY-NAME}");
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Consumer : Kafka Listener Container Factory
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+Kafka Consumer Object is a Client that can read messages from Kafka Cluster.
+
+🧐🕵️🔎 The consumerFactory we created in the previous lesson...
+-> Configures some settings for Kafka Consumer Objects, like for example:
+  - Which service to connect to
+  - How to convert messages into Java objects
+🧐🕵️🔎 Notice this method was defined in a @Configuration class and annotated with @Bean 
+ -> This means it can be used as a Bean from the ApplicationContext that need Kafka Consumer Objects
+
+🧨⚠️🤯 In this lesson we'll create a Kafka Listener Container
+ -> Kafka Listener Container will be responsible of receiving messages from Kafka Topic
+    .. and invoking the handler method for the listener method in our Java code.
+
+
+<EmailNotificationMicroservice>
+[✏️#~/...KafkaConsumerConfiguration]
+package com.learning.kafka.emailnotification;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
+
+import org.springframework.kafka.clients.consumer.ConsumerConfig;
+import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
+
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.springframework.kafka.support.serializer.JsonDeserializer;
+
+import java.util.Map;
+import java.util.HashMap;
+
+@Configuration
+public class KafkaConsumerConfiguration {
+
+    private Environment environment;
+
+    public KafkaConsumerConfiguration(Environment environment) {
+        this.environment = environment;
+    }
+
+    @Bean
+    public ConsumerFactory<String, Object> consumerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ConsumerConfig.GROUP_ID_CONFIG, environment.getProperty("spring.kafka.consumer.group-id"));
+        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, environment.getProperty("spring.kafka.consumer.bootstrap-servers"));
+        config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
+        config.put(JsonDeserializer.TRUSTED_PACKAGES, environment.getProperty("spring.kafka.consumer.properties.spring.json.trusted.packages"));
+        return new DefaultKafkaConsumerFactory<>(config);
+    }
+
+    @Bean
+    ConcurrentKafkaListenerContainerFactory<String, Object> kafkaListenerContainerFactory(ConsumerFactory<String, Object> ConsumerFactory) {
+       ConcurrentKafkaListenerContainerFactory<String, Object> factory = new ConcurrentKafkaListenerContainerFactory<>();
+       factory.setConsumerFactory(consumerFactory);
+
+       return factory;
+    }
+
+}
+~
+📝 Kafka Listener Container object is a component that interacts with Kafka Cluster to receive messages and invoke your listener methods
+🧨⚠️🤯 This method creates a ConcurrentKafkaListenerContainerFactory a special object required to create Kafka Listener Objects
+🧐🕵️🔎 Notice this ConcurrentKafkaListenerContainerFactory method, takes a ConsumerFactory as argument
+ -> ConsumerFactory is used to tell 'ConcurrentKafkaListenerContainerFactory' how to create a Kafka Consumer Object
+ => This 'ConsumerFactory' corresponds to the Bean created in the previous lesson
+...
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Consumer : KafKa Consumer Bean Configurations [Demo]
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+✏️>>> Run ProductServiceApplication  👇👇👇
+[IntelliJ]
+ProductsMicroservice
+  > ▶️ ProductsMicroserviceApplication
+
+...
+
+✏️>>> Run EmailNotifiactionMicroserviceApplication  👇👇👇
+[IntelliJ]
+EmailNotifiactionMicroservice
+  > ▶️ EmailNotifiactionMicroserviceApplication
+
+
+...
+
+
+✏️>>> Send Kafka Message via POSTMAN >>>
+-------------------------
+[POSTMAN]
+[POST] http://localhost:{PORT}/products
+Params | Authorization | Headers | ✅Body | Pre-request Script | Tests | Settings
+none | form-data | x-www-form-urlencoded | ✅raw | binary | GraphQL | 💥JSON
+~
+{
+    "title": "iPhone11",
+    "price": 800,
+    "quantity": 19
+}
+...
+✅Body | Cookies | Headers(5) | Test Results                 Status: 201 Created  Time: 236 ms   Size: 205 B
+Pretty | Raw | Preview | Visualize | Text 
+ {productId}
+
+
+...
+
+
+[IntelliJ]
+EmailNotifiactionMicroservice
+  > ▶️ EmailNotifiactionMicroserviceApplication
+~
+product-created-events: partitions assigned:  [product-created-events...
+Received a new event: IPhone11
+
+
+
+
+
+~
+
+
+
+
+
+❓ Quiz: Apache Kafka Consumer - Quiz 6|6 questions
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+📝 What is the primary function of a Kafka Consumer?
+📝 Can a single Kafka Consumer consume messages from more than one topic?
+📝 What is the purpose of the @KafkaHandler annotation in a Kafka Consumer application?
+📝 What distinguishes the @KafkaHandler annotation from the @KafkaListener annotation?
+📝 What is the difference between a keydeserializer & valuedeserializer?
+📝 What role does the spring.json.trusted.packages property plays?
+=======================================================================================================================================
+
+📝 Question 1:
+What is the primary function of a Kafka consumer❓
+[ ] To produce and send messages to Kafka Topics
+✅ To read and process messages from Kafka Topics
+[ ] To replicate messages across multiple Kafka Brokers
+~
+The primary function of a Kafka Consumer is to read and process messages from Kafka Topics
+Consumers subscribe to one or more Kafka Topics and then process the stream of messages that are published to these topics
+
+
+📝 Question 2:
+Can a single Kafka consumer consume messages from more than one topic❓
+✅ Yes, a consumer can be configured to consume messages from multiple topics simultaneously.
+[ ] No, each consumer can only be linked to one topic at a time
+~
+A Kafka consumer can indeed be configured to consume messages from multiple topics.
+This allows for greater flexibility and efficient utilization of consumers, especially when dealing with a variety of topics that require similar processing logic.
+
+
+📝 Question 3:
+What is the purpose of the @KafkaHandler annotation in a Kafka Consumer Application❓
+✅ To define multiple methods in a listener class for different types of Kafka messages
+[ ] To specify the topic that the Kafka Consumer should listen to
+[ ] To increase the throughput of the Kafka Consumer by processing messages in parallel
+~
+The @KafkaHandler annotation is used within a Kafka listener class to define multiple methods for handling different types of messages.
+Each method annotated with @KafkaHandler can be tailored to process a specific type of message.
+This allows for a more organized and type-specific handling of messages within a single listener class, improving the clarity and maintainability of code
+
+
+📝 Question 4:
+What distinguishes the @KafkaHandler annotation from the @KafkaListener annotation in a Kafka Consumer Application❓
+[ ] @KafkaHandler is used to specify the Kafka topic the method should listen to,
+    while @KafkaListener is used for handling specific message types
+[ ] @KafkaHandler can be used at the class level, while @KafkaListener cannot.
+✅ @KafkaHandler is used to handle specific message types within a  @KafkaListener class,
+   whereas @KafkaListener is used to define the methods that listen to messages from Kafka topics
+~
+@KafkaHandler is used within a class that has @KafkaListener to handle specific message types, 
+allowing for differentiated processing based on message content. 
+This annotation cannot be used to specify the Kafka topic nor can it be placed above the class name.
+On the other hand, @KafkaListener is used to define methods (or classes) that specifically listen 
+to messages from Kafka topics, and it can be used to specify the topic to listen to.
+
+
+📝 Question 5:
+What is the difference between the spring.kafka.consumer.keydeserializer 
+and spring.kafka.consumer.value-deserializer configuration properties in a Kafka Consumer application❓
+[ ] key-deserializer configures the consumer's polling behavior, 
+    while value-deserializer configures the consumer's session timeout.
+[ ] key-deserializer and value-deserializer are both used for configuring the consumer's message fetch size
+✅ key-deserializer specifies the deserializer class for message keys, 
+    while value-deserializer specifies the deserializer class for message values.
+~
+The spring.kafka.consumer.keydeserializer property is used to specify the deserializer class for the keys of Kafka messages
+spring.kafka.consumer.value-deserializer is for specifying the deserializer class for the values of the messages.
+Deserializers are important as they convert the byte stream received from Kafka into a format that can be understood
+and processed by the consumer application
+
+
+📝 Question 6:
+In a Kafka Consumer application, what role does the spring.kafka.consumer.properties.spring.json.trusted.packages configuration play❓
+✅ It determines the packages allowed for deserializing JSON messages, ensuring only objects from known sources are processed
+[ ] It influences how JSON messages are mapped to Java objects, affecting data type conversions during deserialization
+[ ] It controls the handling of JSON payload type information, impacting the deserialization of complex data types
+~
+spring.json.trusted.packages property specifies the packages that are considered safe for JSON message deserialization.
+It's a security measure to prevent the application from deserializing objects from unknown or untrusted sources, thus mitigating potential security risks.
