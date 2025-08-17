@@ -1,0 +1,453 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgment & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handling Deserialization Errors
+📝 S11 : Kafka Consumer - Kafka Consumer Dead Letter Topic
+📝 S12 : Kafka Consumer - Exceptions and Retries
+📝 S13 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S14 : Kafka Consumer Idempotency
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 11 - Kafka Consumer - Dead Letter Topic
+=======================================================================================================================================
+🚀 Dead Letter Topic (DLT)
+---------------
+🧐🕵️🔎 Everything will be working well as long as 'ProductsMicroservice' produces Kafka Messages that are compatible with 
+'ProductCreatedEvent' Java class.
+
+🧨⚠️🤯 If another MicroService publishes messages to our Topic that are NOT compatible with 'ProductCreatedEvent' class
+'EmailNotifiactionMicroservice' will try to consume that new message, but since that message doesn't match with the format expected
+❌ It'll fail trying to deserialize it and create 'ProductCreatedEvent' throwing a 'DeserializationException'
+ -> Unless we handle correctly this exception, the error will happen again and again because of retry mechanism
+ => Kafka Consumer will get stuck in an endles loop trying to consume that message again and again
+
+
+✅ We already solved this problem by using 'ErrorHandlingDeserializer'
+ -> However what we did is we ignored those bad messages that could NOT be deserialized
+
+🧐🕵️🔎 Ignoring messages that could NOT be deserialized is NOT the best solution
+ -> That's when Dead Letter Topic comes handy
+ => We're going to use DLT to placed messages that failed due to some error
+🔥 So, instead of silently ignoring and forgetting bad messages, we'll send them to DLT
+
+~
+
+🚀 KafkaConsumerConfiguration
+---------------
+The final objective is to create a ConsumerFactory and ConcurrentKafkaListenerContainerFactory
+~
+📝 ConsumerFactory >>>
+The ConsumerFactory defines a Consumer Properties Map called config which is passed as argument to the DefaultKafkaConsumerFactory
+ -> Properties like GROUP_ID_CONFIG | BOOTSTRAP_SERVERS_CONFIG | KEY_DESERIALIZER_CLASS_CONFIG | VALUE_DESERIALIZER_CLASS_CONFIG | TRUSTED_PACKAGES
+
+📝 ConcurrentKafkaListenerContainerFactory >>>
+Once instantiated this ListenerFactory via ConcurrentKafkaListenerContainerFactory
+ -> We'll set the ConsumerFactory and ErrorHandler
+   - The ConsumerFactory is the @Bean created at the previous method
+   - The ErrorHandler is created via DefaultErrorHandler which takes a DeadLetterPublishingRecoverer object as constructor argument
+   - The DeadLetterPublishingRecoverer takes a KafkaTemplate object as constructor argument
+...
+KafkaTemplate is a @Bean method that takes a ProducerFactory as argument
+This ProducerFactory defines a Producer Properties Map called config
+ -> Properties like BOOTSTRAP_SERVERS_CONFIG | KEY_SERIALIZER_CLASS_CONFIG | VALUE_SERIALIZER_CLASS_CONFIG
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+
+
+
+🚀 Dead Letter Topic (DLT) - Introduction
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+                         JSON                          JSON
+ [  Products  ]   ->   Serializer   ->  Topic   ->  Deserializer   -> [Email Notification]
+  Microservice                          _                                 Microservice    
+   <Producer>                           /|                                 <Consumer>
+                                       /
+                                      /
+                         STRING      /
+[    Admin     ]   ->   Serializer   
+  Microservice
+   <Producer> 
+
+
+📝 On the left side, in our diagram...
+We have 'ProductsMicroservice' which acts as a Kafka Producer, publishing 'ProductCreatedEvent' to Kafka Topic
+It uses a JSON Serializer to serialize messages in JSON Format
+...
+📝 On the right side, in our diagram...
+We have 'EmailNotifiactionMicroservice' which acts as a Kafka Consumer, it expects and processes messages in JSON format
+It uses JSON Deserializer to convert those messages from JSON into Java Object using 'ProductCreatedEvent'
+
+🧐🕵️🔎 Everything will be working well as long as 'ProductsMicroservice' produces Kafka Messages that are compatible with 
+'ProductCreatedEvent' Java class.
+
+🧨⚠️🤯 If another MicroService publishes messages to our Topic that are NOT compatible with 'ProductCreatedEvent' class
+'EmailNotifiactionMicroservice' will try to consume that new message, but since that message doesn't match with the format expected
+❌ It'll fail trying to deserialize it and create 'ProductCreatedEvent' throwing a 'DeserializationException'
+ -> Unless we handle correctly this exception, the error will happen again and again because of retry mechanism
+ => Kafka Consumer will get stuck in an endles loop trying to consume that message again and again
+
+
+✅ We already solved this problem by using 'ErrorHandlingDeserializer'
+ -> However what we did is we ignored those bad messages that could NOT be deserialized
+
+🧐🕵️🔎 Ignoring messages that could NOT be deserialized is NOT the best solution
+ -> That's when Dead Letter Topic comes handy
+ => We're going to use DLT to placed messages that failed due to some error
+🚀 So, instead of silently ignoring and forgetting bad messages, we'll send them to DLT
+
+
+By default DLT will have same name as the Topic + '-dlt' suffix
+
+
+✏️>>> In the following lessons...
+We'll configure our Kafka consumer to Send those Messages that failed to be deserialized into our DLT
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Handling Errors: The DefaultErrorHandler and DeadLetterPublishingRecoverer class
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+Let's create an ErrorHandler that will help us Send Message to a Dead Letter Topic...
+
+<EmailNotificationMicroservice>
+[✏️#~/...KafkaConsumerConfiguration]
+...
+import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
+import ...
+
+@Configuration
+public class KafkaConsumerConfiguration {
+
+    private Environment environment;
+
+    public KafkaConsumerConfiguration(Environment environment) {
+        this.environment = environment;
+    }
+
+    @Bean
+    public ConsumerFactory<String, Object> consumerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ConsumerConfig.GROUP_ID_CONFIG, environment.getProperty("spring.kafka.consumer.group-id"));
+        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, environment.getProperty("spring.kafka.consumer.bootstrap-servers"));
+        config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        //config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
+        config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, 💥ErrorHandlingDeserializer.class💥);
+        config.put(💥ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class💥);
+        config.put(JsonDeserializer.TRUSTED_PACKAGES, environment.getProperty("spring.kafka.consumer.properties.spring.json.trusted.packages"));
+        return new DefaultKafkaConsumerFactory<>(config);
+    }
+
+    @Bean
+    ConcurrentKafkaListenerContainerFactory<String, Object> kafkaListenerContainerFactory(ConsumerFactory<String, Object> ConsumerFactory) {
+       ConcurrentKafkaListenerContainerFactory<String, Object> factory = new ConcurrentKafkaListenerContainerFactory<>();
+       factory.setConsumerFactory(consumerFactory);
+
+       DefaultErrorHandler errorHandler = new DefaultErrorHandler(new DeadLetterPublishingRecoverer());
+       factory.setCommonErrorHandler(errorHandler);
+
+       return factory;
+    }
+
+}
+~
+🧐🕵️🔎 DefaultErrorHandler class provides error handler capabilities for Kafka Consumer
+ -> It's used to handle exceptions that occur during Message Consumption by Kafka Listener.
+ -> So, we just need to set it as the Error Handler via consumerFactory.setCommonErrorHandler(...)
+ => This means that if error occurs during message consumption by Kafka Listener
+    ..The default error Handler Instance will be used to handle the error
+    ..When Exception takes place, the default error Handler will rewind partitions after message failures
+    So, that it can be replayed to send message
+
+🧐🕵️🔎 To send messages that could NOT be deserialized to a DLT
+ -> Let's create an instance of DeadLetterPublishingRecoverer class and pass it as argument to the DefaultErrorHandler constructor
+ ✏️>>> DefaultErrorHandler errorHandler = new DefaultErrorHandler(new DeadLetterPublishingRecoverer());
+ ✏️>>> factory.setCommonErrorHandler(errorHandler);
+...
+🧐🕵️🔎 Since 'DeadLetterPublishingRecoverer' requires a KafkaTemplate
+ -> We inject it as method argument for the @Bean ConcurrentKafkaListenerContainerFactory 
+
+
+📝 The DeadLetterPublishingRecoverer class in Spring for Apache Kafka Library is used to send failed messages to a DLT
+ -> By passing it as argument to the DefaultErrorHandler constructor
+ => We indicate that DeadLetterPublishingRecoverer will publish those failed messages to DLT 
+    ..when error occurs during message consumption by Kafka Listener
+
+🧨⚠️🤯 KafkaTemplate is what actually will be used to send that message to Death Letter Topic
+ -> This is because KafkaTemplate wraps up Kafka Producer and provides methods to send messages to Kafka Topic
+ => However notice that we need to initialize Kafka Template within Spring Application context
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Create and Configure KafkaTemplate Object
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+Let's create the KafkaTemplate Object...
+ -> So, it can be used by the DeadLetterPublishingRecoverer to send failed messages to a DLT
+...
+🧐🕵️🔎 For that we need to create a @Bean method that returns a KafkaTemplate
+ -> KafkaTemplate Object returned by this method will be added to Spring Application Context
+ -> Once we have KafkaTemplate object available in Spring Application Context, we can...
+    - Inject it using Dependency Injection into other components/ methods in our application
+    => This way KafkaTempate can be injected into kafkaListenerContainerFactory @Bean method
+
+🧐🕵️🔎 Notice KafkaTemplate @Bean method requires a ProducerFactory
+ -> So we pass it as argument and create a producerFactory @Bean method
+ -> As we've mentioned Kafka Template needs a Kafka Producer which provides methods to send messages to Kafka Topics
+    .. that's why we're passing a ProducerFactory so a Kafka Producer gets created and used by KafkaTemplate
+
+<EmailNotificationMicroservice>
+[✏️#~/...KafkaConsumerConfiguration]
+...
+import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
+imoprt org.springframework.kafka.core.ProducerFactory;
+imoprt org.springframework.kafka.core.DefaultKafkaProducerFactory;
+import org.springframework.kafka.support.serializer.JsonSerializer;
+import ...
+
+@Configuration
+public class KafkaConsumerConfiguration {
+
+    private Environment environment;
+
+    public KafkaConsumerConfiguration(Environment environment) {
+        this.environment = environment;
+    }
+
+    @Bean
+    public ConsumerFactory<String, Object> consumerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ConsumerConfig.GROUP_ID_CONFIG, environment.getProperty("spring.kafka.consumer.group-id"));
+        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, environment.getProperty("spring.kafka.consumer.bootstrap-servers"));
+        config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        //config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
+        config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, 💥ErrorHandlingDeserializer.class💥);
+        config.put(💥ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class💥);
+        config.put(JsonDeserializer.TRUSTED_PACKAGES, environment.getProperty("spring.kafka.consumer.properties.spring.json.trusted.packages"));
+        return new DefaultKafkaConsumerFactory<>(config);
+    }
+
+    @Bean
+    ConcurrentKafkaListenerContainerFactory<String, Object> kafkaListenerContainerFactory(
+        ConsumerFactory<String, Object> ConsumerFactory,
+        💥KafkaTemplate<String, Object> kafkaTemplate💥
+    ) {
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler(new DeadLetterPublishingRecoverer(💥kafkaTemplate💥));
+        
+        ConcurrentKafkaListenerContainerFactory<String, Object> listenerFactory = new ConcurrentKafkaListenerContainerFactory<>();
+        listenerFactory.setConsumerFactory(consumerFactory);
+        listenerFactory.setCommonErrorHandler(errorHandler);💥
+
+       return listenerFactory;
+    }
+
+    @Bean
+    KafkaTemplate<String, Object> kafkaTemplate(ProducerFactory<String, Object> producerFactory) {
+        return new KafkaTemplate<>(producerFactory);
+    }
+
+    @Bean
+    ProducerFactory<String, Object> producerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, environment.getProperty("spring.kafka.consumer.bootstrap-servers"));
+        config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
+
+        return new DefaultKafkaProducerFactory<>(config);
+    }
+
+}
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Consumer - Dead Letter Topic [DEMO]
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[IntelliJ]
+EmailNotifiactionMicroservice
+  > ▶️ EmailNotifiactionMicroserviceApplication
+
+...
+
+[IntelliJ]
+ProductsMicroservice
+  > ▶️ ProductsMicroserviceApplication
+
+
+...
+
+
+✏️>>> Send Kafka Message via POSTMAN >>>
+-------------------------
+[POSTMAN]
+[POST] http://localhost:{PORT}/products
+Params | Authorization | Headers | ✅Body | Pre-request Script | Tests | Settings
+none | form-data | x-www-form-urlencoded | ✅raw | binary | GraphQL | 💥JSON
+~
+{
+    "title": "iPhone11(2)",
+    "price": 800,
+    "quantity": 19
+}
+...
+✅Body | Cookies | Headers(5) | Test Results                 Status: 201 Created  Time: 236 ms   Size: 205 B
+Pretty | Raw | Preview | Visualize | Text 
+ {productId}
+
+
+...
+
+
+[IntelliJ]
+EmailNotifiactionMicroservice
+  > ▶️ EmailNotifiactionMicroserviceApplication
+~
+✅ ProductCreatedEventHandler     : Received a new event:  iPhone11
+
+
+...
+
+
+[terminal(1)]
+$ cd {WORKSPACE}/kafka
+$ ./bin/kafka-console-producer.sh \
+   --bootstrap-server localhost:9092 \
+   --topic product-created-events-topic \
+   --property "parse.key=true" \
+   --property "key.separator=:"
+> 1:a@sd$fas&dfas-?\a1bD32fhd
+>
+
+
+...
+
+
+[terminal(2)]
+$ cd {WORKSPACE}/kafka
+$ ./bin/kafka-console-consumer.sh \
+   --bootstrap-server localhost:9092 \
+   --topic product-created-events-topic-dlt \
+   --from-beginning \
+   --property print.key=true \
+   --property print.value=true
+1    "e3NmYXNkc2RmfQ=="
+
+
+🔎 online Base64 decoder
+⚓ https://base64decode.org
+e3NmYXNkc2RmfQ==  
+ -> DECODE
+
+
+
+
+
+~
+
+
+
+
+
+❓ Quiz: Dead Letter Topic in Kafka  ::  Quiz 7|3 questions
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+📝 Question 1:
+What is the primary purpose of a Dead Letter Topic in Apache Kafka❓
+[ ] To store messages that exceed the maximum size limits
+[ ] To serve as a backup for all messages sent through kafka
+✅ To handle messages that could not be processed successfully
+~
+The primary purpose of a Dead Letter Topic in Kafka is to handle messages that cannot be processed successfully by a consumer. 
+This can include messages that cause exceptions during processing.
+The Dead Letter Topic provides a way to separate these problematic messages for further analysis of reprocessing, 
+without interrupting the normal message flow.
+
+
+📝 Question 2:
+When would a message be sent to a Dead Letter Topic in Kafka❓
+[ ] After it has been successfully processed by a consumer
+[ ] When it has not been acknowledged by any consumer within a specified timeout
+✅ If a consumer encounters an error while processing the message and cannot proceed
+~
+A message is typically sent to a Dead Letter Topic when a consumer encounters an error while processing it,
+and cannot successfully process the message. This allows the message to be isolated and dealt with separately, 
+ensuring that processing errors do not disrupt the normal flow of messages.
+
+
+📝 Question 3:
+What is a common practice after a message is sent to a Dead Letter Topic in Kafka❓ 
+[ ] The message is automatically deleted from the original topic
+✅ The message is usually analized and potentially reprocessed or corrected
+[ ] The message is immediately resent to the consumer for reprocessing
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -11,10 +11,10 @@
 📝 S08 : Kafka Producer - Idempotency
 📝 S09 : Kafka Consumer - Spring Boot Microservice
 📝 S10 : Kafka Consumer - Handling Deserialization Errors
-📝 S11 : Kafka Consumer - Exceptions and Retries
-📝 S12 : Kafka Consumer - Multiple Consumers in a Consumer Group
-📝 S13 : Kafka Consumer - Idempotency
-📝 S14 : Apache Kafka and Database Transactions
+📝 S11 : Kafka Consumer - Kafka Consumer Dead Letter Topic
+📝 S12 : Kafka Consumer - Exceptions and Retries
+📝 S13 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S14 : Kafka Consumer Idempotency
 📝 S15 : Apache Kafka Transactions
 📝 S16 : Apache Kafka and Database Transactions
 📝 S17 : Integration Testing - Kafka Producer
@@ -29,6 +29,25 @@
 
 
 📣 Section 09 - Kafka Consumer - Spring Boot Microservice
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+Create a Spring Boot Application with Spring Web [WEB] & Spring for Apache Kafka [MESSAGING] as Dependencies
+[✏️#~/...application.yml]
+spring:
+  kafka:
+    consumer:
+      group-id: product-created-events
+      bootstrap-servers: localhost:9092
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+
+
+To work with a Kafka Consumer within Spring Boot...
+We'll use a @Component class 
+ -> @KafkaListener is a class/method level annotation that allow us to define the Topics we'll be listening to
+ -> @KafkaHandler allow us to specify the format type a method will handle
+    .. This will define the  link between a 
 =======================================================================================================================================
 
 🚀 Kafka Consumer - Introduction
@@ -56,8 +75,9 @@ In this lesson we'll create Kafka Consumers as another Microservice
 
 
 🧨⚠️🤯 As mentioned before...
-So, a Kafka Topic defines the number of Partitions. Each message will be stored in its own partition and each Partition 
-will store its own set of Messages. You must decide yourself how many partitions to create for a Topic.
+So, a Kafka Topic defines the number of Partitions. 
+Each message will be stored in its own partition. So, each Partition will store its own set of Messages.
+🤓 You must decide how many partitions to create for a Topic. (According to your business need)
 
            Kafka Topic (Product-created-event-topic)
 Partition-0| 0 | 1 | 2 | 3 | 4 | 5 | n 
@@ -71,7 +91,7 @@ When you start a Kafka Consumer Microservice, it'll be pulling messages from Kaf
 
 🧐🕵️🔎 Kafka Consumers will read data from Partition
 When Kafka consumer reads messages from partitions, it reads them in parallel.
-There is no order guarantee about which messages and which partitions will be read first, 
+There is no order guarantee about which messages and which partitions will be read first
  -> However it does read messages in order within a single partition.
 
 🧨⚠️🤯 Messages within a single partition are always read in order
@@ -140,10 +160,10 @@ Dependencies:
 
 [✏️#~/...application.properties]
 server.port=0
+spring.kafka.consumer.group-id=product-created-events
 spring.kafka.consumer.boostrap-servers=localhost:9092
 spring.kafka.consumer.key-deserializer=org.apache.kafka.common.serialization.StringDeserializer
 spring.kafka.consumer.value-deserializer=org.springframework.kafka.support.serializer.JsonDeserializer
-spring.kafka.consumer.group-id=product-created-events
 spring.kafka.consumer.properties.spring.json.trusted.packages=*
 =======================================================================================================================================
 
@@ -161,7 +181,7 @@ spring.kafka.consumer.properties.spring.json.trusted.packages=*
  => All microservices that belong to the same group. They'll work together to process messages related to a Topic
 
 
-🧐🕵️🔎 'spring.json.trusted.packages' property specify one or more packages that are considered trustsnñr for deserialization when processing JSON messages.
+🧐🕵️🔎 'spring.json.trusted.packages' property specify one or more packages that are considered trusted for deserialization when processing JSON messages.
   -> If you know the application that publishes events is trustable
   => Then you can allow any package and use '*' asterix instead of a package name.
   ✅ For security reasons it's adivisable to use least-privilege principle specifying a particular package
@@ -212,7 +232,7 @@ public class ProductCreatedHandler {
 
 }
 ~
-🧐🕵️🔎 @KafkaListener annotation can be used as Class-level / Method-level annotation
+🧐🕵️🔎 @KafkaListener annotation can be used as {Class|Method}-level annotation
  -> It's used to mark a Class/Method as target for incoming messages from Kafka Topic
 ...
 🧨⚠️🤯 @KafkaListener can be configured to listen to multiple topics
@@ -228,7 +248,7 @@ e.g. @KafkaListener(topics = {"topic1", "topic2"})
 
 ~
 
-@KafkaHandler method wont be invoked by ourselves
+🧨⚠️🤯 @KafkaHandler method wont be invoked by ourselves
 This method will be called automatically as soon as Kafka Consumer receives a new message from Kafka Topic
 
 

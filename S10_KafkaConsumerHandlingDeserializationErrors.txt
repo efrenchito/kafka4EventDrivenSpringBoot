@@ -11,10 +11,10 @@
 📝 S08 : Kafka Producer - Idempotency
 📝 S09 : Kafka Consumer - Spring Boot Microservice
 📝 S10 : Kafka Consumer - Handling Deserialization Errors
-📝 S11 : Kafka Consumer - Exceptions and Retries
-📝 S12 : Kafka Consumer - Multiple Consumers in a Consumer Group
-📝 S13 : Kafka Consumer - Idempotency
-📝 S14 : Apache Kafka and Database Transactions
+📝 S11 : Kafka Consumer - Kafka Consumer Dead Letter Topic
+📝 S12 : Kafka Consumer - Exceptions and Retries
+📝 S13 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S14 : Kafka Consumer Idempotency
 📝 S15 : Apache Kafka Transactions
 📝 S16 : Apache Kafka and Database Transactions
 📝 S17 : Integration Testing - Kafka Producer

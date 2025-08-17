@@ -1,0 +1,41 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgment & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handling Deserialization Errors
+📝 S11 : Kafka Consumer - Kafka Consumer Dead Letter Topic
+📝 S12 : Kafka Consumer - Exceptions and Retries
+📝 S13 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S14 : Kafka Consumer Idempotency
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 12 - Kafka Consumer - Dead Letter Topic
+=======================================================================================================================================
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+
+
+
+🚀 Dead Letter Topic (DLT) - Introduction
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
