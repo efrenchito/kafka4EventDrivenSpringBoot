@@ -195,7 +195,7 @@ services:
       - /Users/ediaz/kafka/docker-compose/volumes/server-1:/bitnami/kafka
 
 🧐🕵️🔎 We can configure a Custom Network and make our containers run in its own isolated network.
- -> We're not going to do that since this is enough for development purpose
+ -> We're not going to do that since this version is enough for development purpose
 
 
 
@@ -223,7 +223,20 @@ HOSTNAME=host.docker.internal
  -> Since 'localhost' might not even be available within Docker container
 
 
+...
 
+
+Context	                            Use localhost?	                    Explanation
+-------------------------------------------------------------------------------------------------------------------------
+From host → container	                ✅ Sometimes (via mapped ports)	  e.g., localhost:9092 if -p 9092:9092 is exposed.
+From container → host	                ❌ No (use host.docker.internal)	  In Docker Desktop, localhost is the container’s own loopback.
+From container → itself	              ✅ Yes	                            Container refers to its own loopback (itself).
+From container → another container	  ❌ No (use container name)	        localhost will point to itself, not the other container.
+
+
+✅ host.docker.internal    → to reach the host
+✅ service/container names → to reach other containers
+✅ localhost               → only to reach inside the same container
 
 
 ~

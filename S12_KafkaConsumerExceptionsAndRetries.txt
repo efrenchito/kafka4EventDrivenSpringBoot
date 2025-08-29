@@ -28,14 +28,293 @@
 
 
 
-📣 Section 12 - Kafka Consumer - Dead Letter Topic
+📣 Section 12 - Kafka Consumer - Exceptions and Retries
 =======================================================================================================================================
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 
-
-
-
-🚀 Dead Letter Topic (DLT) - Introduction
+🚀 Kafka Consumer : Exception Handling and Retries  - Introduction
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+So far, we've seen than if Kafka Consumer is not able to deserialize a Message
+ -> By default because of the retry mechanism it will try to process that message again and again
+ -> To avoid that we could use an ErrorDeserializerHandler which by default will just ignore it
+... That could be our first attempt to try to solve it, however the message will be just ignored it.
+A better approach will be to send it to a DLT
+
+📝 What happens if the error we're dealing with occurs after the message was deserialized❓
+(This is the message was received by the Consumer but when processing it we got an issue)
+---------------
+ o If Exception is Retryable, then:
+   -> Configure a waiting time
+   -> Define the Number of retries
+   
+   => After number of retries get exhausted send it to DLT
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Creating Retryable and Non-Retryable Exceptions in Kafka
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+
+📝 com.learning.kafka.emailnotification.error.RetryableException
+
+[✏️#~/...RetryableException]
+public class RetryableException extends RuntimeException {
+    
+    public Retryable(String message) {
+        super(message);
+    }
+
+    public Retryable(Throwable throwable) {
+        super(throwable);
+    }
+}
+
+
+📝 com.learning.kafka.emailnotification.error.NonRetryableException
+
+[✏️#~/...NonRetryableException]
+public class NonRetryableException extends RuntimeException {
+    
+    public NonRetryableException(String message) {
+        super(message);
+    }
+
+    public NonRetryableException(Throwable throwable) {
+        super(throwable);
+    }
+}
+
+
+✏️>>> In the following lessons we'll register this classes within our ErrorHandler
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Configure DefaultErrorHandler with a list of not Retryable Exceptions
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+🧨⚠️🤯 DefaultErrorHandler provides default implementation to handle exceptions that can take place during message exceptions.
+ -> We can configure this error object with a list of exceptions that are Not Retrievable.
+    Then if a Not Retrievable exception is thrown, this error handler will not attempt to retry consuming that message again
+    and instead it will send this message to a Dead Letter Topic (DLT)
+    Execution will continue and the next message in line will be consumed
+
+🧐🕵️🔎 >>>
+ => This can be achieved by passing that list to the .addNotRetriableExceptions(Class<? extends Exception>... exceptionTypes);
+ => .addNotRetriableExceptions(...) Allow us to register more than one exception if needed separated by comma
+    ✏️>>> errorHandler.addNotRetriableExceptions(NotRetryableException.class, HttpServerErrorException.class);
+ => Alternatively we can catch the different exceptions in our Kafka Listener and then throw the custom NotRetryableException
+=======================================================================================================================================
+
+Let's register NonRetryableException with ErrorHandler object...
+
+At this moment we've defined a KafkaConfiguration class annotated with @Configuration
+ -> It defines ConsumerFactory and ConcurrentKafkaListenerContainerFactory @Bean's
+.....
+📝 ConsumerFactory >>>
+The ConsumerFactory defines a Consumer Properties Map called config which is passed as argument to the DefaultKafkaConsumerFactory
+ -> Properties like GROUP_ID_CONFIG | BOOTSTRAP_SERVERS_CONFIG | KEY_DESERIALIZER_CLASS_CONFIG | VALUE_DESERIALIZER_CLASS_CONFIG | TRUSTED_PACKAGES
+
+📝 ConcurrentKafkaListenerContainerFactory >>>
+Once instantiated this ListenerFactory via ConcurrentKafkaListenerContainerFactory
+ -> We'll set the ConsumerFactory and ErrorHandler
+   - The ConsumerFactory is the @Bean created at the previous method
+   - The ErrorHandler is created via DefaultErrorHandler which takes a DeadLetterPublishingRecoverer object as constructor argument
+   - The DeadLetterPublishingRecoverer takes a KafkaTemplate object as constructor argument
+...
+KafkaTemplate is a @Bean method that takes a ProducerFactory as argument
+This ProducerFactory defines a Producer Properties Map called config
+ -> Properties like BOOTSTRAP_SERVERS_CONFIG | KEY_SERIALIZER_CLASS_CONFIG | VALUE_SERIALIZER_CLASS_CONFIG
+.....
+
+🧨⚠️🤯 DefaultErrorHandler provides default implementation to handle exceptions that can take place during message exceptions.
+ -> We can configure this error object with a list of exceptions that are not retrievable.
+    Then if a not retrievable exception is thrown, this error handler will not attempt to retry consuming message again
+    and instead it will send this message to a Dead Letter Topic (DLT)
+    Execution will continue and the next message in line will be consumed
+ => This can be achieved by passing that list to the .addNotRetriableExceptions(Class<? extends Exception>... exceptionTypes);
+ => .addNotRetriableExceptions(...) Allow us to register more than one exception if needed separated by comma
+    ✏️>>> errorHandler.addNotRetriableExceptions(NotRetryableException.class, HttpServerErrorException.class);
+ => Alternatively we can catch the different exceptions in our Kafka Listener and then throw the custom NotRetryableException   
+...
+
+
+
+<EmailNotificationMicroservice>
+[✏️#~/...KafkaConsumerConfiguration]
+...
+import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
+import ...
+
+@Configuration
+public class KafkaConsumerConfiguration {
+
+    private Environment environment;
+
+    public KafkaConsumerConfiguration(Environment environment) {
+        this.environment = environment;
+    }
+
+    @Bean
+    public ConsumerFactory<String, Object> consumerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ConsumerConfig.GROUP_ID_CONFIG, environment.getProperty("spring.kafka.consumer.group-id"));
+        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, environment.getProperty("spring.kafka.consumer.bootstrap-servers"));
+        config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        //config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
+        config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, 💥ErrorHandlingDeserializer.class💥);
+        config.put(💥ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class💥);
+        config.put(JsonDeserializer.TRUSTED_PACKAGES, environment.getProperty("spring.kafka.consumer.properties.spring.json.trusted.packages"));
+        return new DefaultKafkaConsumerFactory<>(config);
+    }
+
+    @Bean
+    ConcurrentKafkaListenerContainerFactory<String, Object> kafkaListenerContainerFactory(
+        ConsumerFactory<String, Object> ConsumerFactory, KafkaTemplate<String, Object> kafkaTemplate) {
+       ConcurrentKafkaListenerContainerFactory<String, Object> factory = new ConcurrentKafkaListenerContainerFactory<>();
+       factory.setConsumerFactory(consumerFactory);
+
+       DefaultErrorHandler errorHandler = new DefaultErrorHandler(new DeadLetterPublishingRecoverer(kafkaTemplate));
+       💥errorHandler.addNotRetriableExceptions(NotRetryableException.class);💥
+       factory.setCommonErrorHandler(errorHandler);
+
+       return factory;
+    }
+
+}
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Kafka Consumer Exceptions : NonRetryableException [DEMO]
+===========================================================================================================================
+
+[IntelliJ]
+<EmailNotificationMicroservice>
+[✏️#~/...ProductCreatedEventHandler]
+package com.learning.kafka.emailnotification.handler;
+
+import com.learning.kafka.emailnotification.error.NotRetryableException;
+
+import org.springframework.stereotype.Component;
+import org.springframework.kafka.annotation.KafkaListener;
+
+@Component
+@KafkaListener(topics = "product-created-event-topic")
+public class ProductCreatedEventHandler {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+
+    @KafkaHandler
+    public void handle(ProductCreatedEvent productCreatedEvent) {
+        throw new NotRetryableException("An Error took place. No need to consume this message again.");
+        //LOGGER.info("Received a new Event: " + productCreatedEvent.getTitle());
+    }
+
+}
+~
+🧐🕵️🔎 Once ErrorHandler notice this Exception...
+ -> Since it was registered as a NotRetryableException this message won't be retried
+
+
+~
+
+
+[IntelliJ]
+EmailNotifiactionMicroservice
+  > ▶️ EmailNotifiactionMicroserviceApplication
+
+
+✏️>>> Send Kafka Message via POSTMAN >>>
+-------------------------
+[POSTMAN]
+[POST] http://localhost:{PORT}/products
+Params | Authorization | Headers | ✅Body | Pre-request Script | Tests | Settings
+none | form-data | x-www-form-urlencoded | ✅raw | binary | GraphQL | 💥JSON
+~
+{
+    "title": "iPhone11(2)",
+    "price": 800,
+    "quantity": 19
+}
+...
+✅Body | Cookies | Headers(5) | Test Results                 Status: 201 Created  Time: 236 ms   Size: 205 B
+Pretty | Raw | Preview | Visualize | Text 
+ {productId}
+
+
+...
+
+
+[IntelliJ]
+EmailNotifiactionMicroservice
+  > ▶️ EmailNotifiactionMicroserviceApplication
+~
+-
+
+...
+
+
+[terminal]
+$ ./bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic product-created-events-topic.DLT \ 
+  --from-beginning --property print.key=true --property print.value=true
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Configure DefaultErrorHandler with a list of Retryable Exceptions
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+🧨⚠️🤯 DefaultErrorHandler provides default implementation to handle exceptions that can take place during message exceptions.
+ -> We can configure this error object with a list of exceptions that are Retrievable.
+    Then if a Retrievable exception is thrown, this error handler will attempt to retry consuming message again
+    and instead it will send this message to a Dead Letter Topic (DLT)
+    Execution will continue and the next message in line will be consumed
+
+🧐🕵️🔎 >>>
+We can also add a Wait Time Interval by adding a FixedBackOff object as parameter to our DefaultErrorHandler
+    ✏️>>> new FixedBackOff(numberOfMilis, maxNumberOfRetries);
+    ✏️>>> DefaultErrorHandler errorHandler = new DefaultErrorHandler(
+        new DeadLetterPublishingRecoverer(kafkaTemplate),
+      💥new FixedBackOff(5000, 3)
+      );
+
+✅ >>>
+ => This can be achieved by passing that list to the .addRetriableExceptions(Class<? extends Exception>... exceptionTypes);
+ => .addRetriableExceptions(...) Allow us to register more than one exception if needed separated by comma
+    ✏️>>> errorHandler.addRetriableExceptions(RetryableException.class, TimeOutException.class);
+ => Alternatively we can catch the different exceptions in our Kafka Listener and then throw the custom RetryableException
 =======================================================================================================================================

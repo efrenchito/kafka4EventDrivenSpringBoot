@@ -96,49 +96,47 @@ Integración AWS	Nativa	Nativa	Nativa	Requiere infraestructura propia o MSK
 Semántica de entrega	At least once	Best effort	At least once	At least once / Exactly once (opcional)
 
 🎯 3. Casos de Uso
-Caso de Uso	SQS	SNS	Kinesis Stream	Kafka
-Comunicación entre microservicios	✅	⚠️ (solo notificación)	⚠️	✅
-Notificaciones push (email, SMS, Lambda)	❌	✅	❌	⚠️
-Ingesta y procesamiento de datos en tiempo real	❌	❌	✅	✅
-Persistencia y relectura de eventos	⚠️ (14 días)	❌	⚠️ (7 días máx)	✅
-Escenarios de IoT / logs / clickstreams	❌	❌	✅	✅
-Necesidad de orden fuerte	✅ (FIFO)	❌	⚠️ (por shard)	✅ (por partición)
+Caso de Uso	                                     SQS	      SNS	             Kinesis Stream	      Kafka
+-------------------------------------------------------------------------------------------------------------------------
+Comunicación entre microservicios                ✅	         ⚠️(Notificación)	    ⚠️	             ✅
+Notificaciones push (email, SMS, Lambda)	     ❌	         ✅	                   ❌	           ⚠️
+Ingesta y procesamiento de datos en tiempo real	 ❌	         ❌	                   ✅	           ✅
+Persistencia y relectura de eventos              ⚠️(14Días)	  ❌	                    ⚠️(7DíasMáx)	 ✅
+Escenarios de IoT / logs / clickstreams	         ❌	         ❌	                   ✅	           ✅
+Necesidad de orden fuerte	                     ✅(FIFO)	 ❌	                   ⚠️(Por SHARD)	✅(PorPartición)
+
 
 🔎 4. Ventajas y Limitaciones
-🔸 SQS
+📝 SQS
+----------
 ✅ Sencillo, escalable, manejado por AWS
-
 ⚠️ No pub/sub, no streaming real
-
 🛠 Ideal para decoupling en microservicios
 
-🔸 SNS
+📝 SNS
+----------
 ✅ Fan-out, múltiples protocolos (HTTP, Lambda, SMS)
-
 ❌ No persistencia ni reintentos por sí mismo
-
 🛠 Ideal para notificaciones push
 
-🔸 Kinesis Stream
+📝 Kinesis Stream
+----------
 ✅ Integración con AWS Analytics/Glue/Lambda
-
 ❌ Máx 7 días de retención
-
 🛠 Ideal para telemetría, logs, IoT en AWS
 
-🔸 Kafka
+📝 Kafka
+----------
 ✅ Alta durabilidad, orden, flexibilidad, ecosistema rico (Kafka Streams, Connect, Flink, etc.)
-
 ❌ Mayor complejidad operativa (excepto si usas MSK o Confluent Cloud)
-
 🛠 Ideal para event sourcing, pipelines complejos, stream processing
 
 🧠 En Resumen
-Necesitas...	Usa...
-Cola tradicional (punto-a-punto)	✅ SQS
-Notificaciones a múltiples destinos	✅ SNS
-Ingesta de datos en tiempo real en AWS	✅ Kinesis
-Plataforma completa de streaming	✅ Kafka
+Necesitas...	                           Usa...
+Cola tradicional (punto-a-punto)	      ✅ SQS
+Notificaciones a múltiples destinos	      ✅ SNS
+Ingesta de datos en tiempo real en AWS	  ✅ Kinesis
+Plataforma completa de streaming	      ✅ Kafka
 
 
 
@@ -286,3 +284,29 @@ This promotes:
 Can you?	    ✅ Yes
 Should you?	    ⚠️ Only if you have a good reason
 Best practice?	🟢 Separate topic per message type
+
+
+
+
+
+❌/opt/bitnami/scripts/libkafka.sh: line 395: arr[2]: unbound variable
+ -> Las variables KAFKA_CFG_LISTENERS & KAFKA_CFG_ADVERTISED_LISTENERS 
+    ...espera el formato: <listener_name>://<host>:<port>
+    ❌ PLAINTEXT://9090 -> ✅ PLAINTEXT://:9090
+~
+✅ [✏️#~/...docker-compose.yml]
+services:
+  kafka-1:
+    image: bitnami/kafka:latest
+    ports:
+      - "9092:9092" 
+    environment:
+      - KAFKA_KRAFT_CLUSTER_ID={ID}
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka-1:9091
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9090,CONTROLLER://:9091,EXTERNAL://:9092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka-1:9090,EXTERNAL://${HOSTNAME:-localhost}:9092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT

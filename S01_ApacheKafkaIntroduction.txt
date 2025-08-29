@@ -304,8 +304,9 @@ It also means any issues can be restricted to their specific service rather than
 
 🧐 Can you explain the difference between synchronous and asynchronous communication in the context of Microservices❓
 ~~~~~~~~~~~~~~~
-Synchronous communication definitely involves waiting for an immediate response before continuing, while asynchronous communication allows processes to keep running and deal with the response later when it's ready. 
-This flexibility of asynchronous communication can make systems more scalable and resilient, especially under heavy workloads. 
+Synchronous communication definitely involves waiting for an immediate response before continuing, 
+while asynchronous communication allows processes to keep running and deal with the response later when it's ready. 
+This flexibility of asynchronous communication can make systems more scalable and resilient, especially under heavy workloads.
 
 
 

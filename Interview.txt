@@ -1,0 +1,61 @@
+🚀 Microservices Architecture - Overview
+===============================================================================================================================
+What is a Monolithic application?
+what is a Microservice application?
+Main differences between a Microservice and a Monolithic application?
+How Microservices communicate with each other?
+What is a synchronous & asynchronous communication between Microservices?
+What is Apache Kafka?
+-----
+📝 What is a Monolithic application?
+A monolithic application is indeed built as a single unit, 
+and because of this, any change typically necessitates redeploying the entire application. 
+This design can make scaling and updating more challenging compared to Microservices. 
+
+📝 what is a Microservice application?
+A Microservice is indeed all about being smaller, focused on a single functionality, and autonomous. 
+This independence allows for easier deployment, testing, and scalability compared to traditional architectures. 
+
+📝 Main differences between a Microservice and a Monolithic application?
+In terms of deployment, fault isolation, scalability and Flexibility.
+Microservices' independence and smaller scope make troubleshooting and deploying updates much simpler and faster. 
+It also means any issues can be restricted to their specific service rather than causing a chain reaction in the whole system, 
+which is a huge advantage over monolithic applications. 
+
+📝 How Microservices communicate with each other?
+The most common way of communication between Microservices is via HTTP Request.
+()"Microservice-A" sends an HTTP Request to "Microservice-B".)
+However notice that HTTP Request is not the only way of communication between Microservices
+For those cases when you need to communicate multiple Microservices about certain situation
+✅ Here it's when Event Driven communication and Apache Kafka can help
+
+📝 What is a synchronous & asynchronous communication between Microservices?
+Synchronous communication definitely involves waiting for an immediate response before continuing, 
+while asynchronous communication allows processes to keep running and deal with the response later when it's ready. 
+This flexibility of asynchronous communication can make systems more scalable and resilient, especially under heavy workloads.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Apache Kafka 101
+===============================================================================================================================
+📝 What is Apache Kafka?
+Apache Kafka is primarily used as a distributed Event Streaming Platform.
+It excels in collecting, processing, storing and integrating large volumes of data in real-time.
+Kafka allows different systems and applications to publish (produce) and subscribe to (consume) streams of events, 
+making it highly suitable for event-driven architectures
+
+📝 Tools/Platforms like Kafka...
+ ActiveMQ | RabbitMQ
+ [AWS] SQS | SNS | Kinesis Stream
+  -> Difference between SQS & SNS?
+
+📝 What are the main Apache Kafka Components?
+Cluster | Controller | Broker | Topic | Partitions | Replicas | Client (Producer/Consumer)

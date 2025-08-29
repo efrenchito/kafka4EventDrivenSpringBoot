@@ -212,7 +212,7 @@ Let's create a new class that will be used to handle or consume 'Product Created
 
 [IntelliJ] > EmailNotificationMicroservice
 
-[✏️#~/...ProductCreatedHandler]
+[✏️#~/...ProductCreatedEventHandler]
 package com.learning.kafka.emailnotification.handler;
 
 import org.springframework.stereotype.Component;
@@ -220,7 +220,7 @@ import org.springframework.kafka.annotation.KafkaListener;
 
 @Component
 @KafkaListener(topics = "product-created-event-topic")
-public class ProductCreatedHandler {
+public class ProductCreatedEventHandler {
 
     private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
 
