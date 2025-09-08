@@ -1,0 +1,378 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgment & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handling Deserialization Errors
+📝 S11 : Kafka Consumer - Kafka Consumer Dead Letter Topic
+📝 S12 : Kafka Consumer - Exceptions and Retries
+📝 S13 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S14 : Kafka Consumer Idempotency
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 18 - Integration Testing - Kafka Consumer
+=======================================================================================================================================
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+🚀 Overview of the Method Under Test
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+Let's write the integration test for Spring boot application that acts as Kafka consumer called  ´EmailNotificationMicroservice´
+
+<EmailNotificationMicroservice>
+[✏️#~/...ProductCreatedEventHandler]
+package com.learning.kafka.emailnotification.handler;
+
+import com.learning.kafka.emailnotification.error.NotRetryableException;
+
+import org.springframework.stereotype.Component;
+import org.springframework.kafka.annotation.KafkaListener;
+
+@Component
+@KafkaListener(topics = "product-created-event-topic")
+public class ProductCreatedEventHandler {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+    private RestTemplate restTemplate;
+    private ProcessedEventRepository processedEventRepository;
+
+    public ProductCreatedEventHandler(RestTemplate restTemplate, ProcessedEventRepository processedEventRepository) {
+        this.restTemplate = restTemplate;
+        this.processedEventRepository = processedEventRepository;
+    }
+
+    @Transactional
+    @KafkaHandler
+    public void handle(
+        @Payload ProductCreatedEvent productCreatedEvent, 
+        @Header("messageId") String messageId,
+        @Header(KafkaHeaders.RECEIVED_KEY) String messageKey
+    ) {
+        LOGGER.info("Received a new event: " + productCreatedEvent.getTitle() 
+        + "with productId: " + productCreatedEvent.getProductId());
+
+        // Check if this message was already processed before
+        ProcessedEventEntity existingRecord = processedEventRepository.findByMessageId(messageId);
+
+        if(existingRecord != null) {
+            LOGGER.info("Found a duplicate message id: {}", existingRecord.getMessageId());
+            return;
+        }
+
+        String requestUrl = "http://localhost:8082/response/200";
+
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(requestUrl, HttpMethod.GET, null, String.class);
+
+            if(response.getStatusCode().value() == HttpStatus.OK.value()) {
+                LOGGER.info("Received response from a remote service: " + response.getBody());
+            }
+        } catch(ResourceAccessException ex) {
+            LOGGER.error(ex.getMessage());
+            throw new RetryableException(ex);
+        } catch(HttpServerErrorException ex) {
+            LOGGER.error(ex.getMessage());
+            throw new NotRetryableException(ex);
+        } catch(Exception ex) {
+            LOGGER.error(ex.getMessage());
+            throw new NotRetryableException(ex);
+        }
+        
+
+        // Save a unique message id in a database table
+        try {
+            processedEventRepository.save(new ProcessedEventEntity(messageId, productCreatedEvent.getProductId()));
+        } catch(DataIntegrityViolationException ex) {
+            ...
+        }
+    }
+
+}
+~
+🧐🕵️‍♂️🔎 We've annotated this class with @KafkaListener(topics = "product-created-events-topic")
+ -> When new Kafka message arrives to this topic, the handle method will be triggered
+ => So, we'll test that all objects that this method receives as method arguments are valid
+
+🧐🕵️‍♂️🔎 Notice this methid has a lot of business logic and it uses other components as well
+  📝 Spring Data JPA Repository
+     -> processedEventRepository.findByMessageId :: To look up for a record in the database table
+     -> processedEventRepository.save :: To save request to another microservice
+  📝 RestTemplate
+     -> restTemplate.exchange :: 
+
+🤯⚠️🧨 Since we don't want to test this dependencies we'll mock them in our test method
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Creating a new Test class
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[✏️#~/..src/test/java/ProductCreatedEventHandlerIntegratingTest.java]
+package com.learning.kafka.emailnotification;
+
+import java.math.BigDecimal;
+import java.util.UUID;
+
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.kafka.test.context.EmbeddedKafka;
+
+@EmbeddedKafka
+@SpringBootTest(properties = "spring.kafka.consumer.bootstrap-servers=${spring.embedded.kafka.brokers}")
+public class ProductCreatedEventHandlerIntegrationTest {
+
+    @Test
+    public void testProductCreatedEventHandler_OnProductCreated_HandlesEvent() {
+
+        // Arrange
+        ProductCreatedEvent productCreatedEvent = new ProductCreatedEvent();
+        productCreatedEvent.setTitle("Test product");
+        productCreatedEvent.setProductId(UUID.randomUUID().toString());
+        productCreatedEvent.setQuantity(1);
+        productCreatedEvent.setPrice(new BigDecimal(10));
+
+        String messageId = UUID.randomUUID().toString();
+        String messageKey = productCreatedEvent.getProductId();
+
+        ProducerRecord<String, ProductCreatedEvent> record = new ProducerRecord<>(
+            "",
+            messageKey,
+            productCreatedEvent
+        );
+        record.headers().add("messageId", messageId.getBytes());
+        record.headers().add(KafkaHeaders.RECEIVED_KEY, messageKey.getBytes());
+
+        // Act
+
+        // Assert
+    }
+}
+~
+Notice @SpringBootTest uses properties attribute
+ -> Here we're passing spring.kafka.💥consumer💥.bootstrap-servers=${spring.embedded.kafka.brokers}
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Mocking dependencies
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[✏️#~/..src/test/java/ProductCreatedEventHandlerIntegratingTest.java]
+package com.learning.kafka.emailnotification;
+
+import java.math.BigDecimal;
+import java.util.UUID;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.kafka.clients.producer.ProducerRecord;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.kafka.support.KafkaHeaders;
+import org.springframework.kafka.test.context.EmbeddedKafka;
+
+import com.learning.kafka.core.ProductCreatedEvent;
+import com.learning.kafka.emailnotification.io.ProcessedEventRepository;
+
+@EmbeddedKafka
+@SpringBootTest(properties = "spring.kafka.consumer.bootstrap-servers=${spring.embedded.kafka.brokers}")
+public class ProductCreatedEventHandlerIntegrationTest {
+
+    @MockBean
+    ProcessedEventRepository processedEventRepository;  //💥
+
+    @MockBean
+    RestTemplate restTemplate;
+
+    @Autowired
+    KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate;
+
+    @SpyBean
+    ProductCreatedEventHandler productCreatedEventHandler;
+
+    @Test
+    public void testProductCreatedEventHandler_OnProductCreated_HandlesEvent() throws Exception {
+
+        // Arrange
+        ProductCreatedEvent productCreatedEvent = new ProductCreatedEvent();
+        productCreatedEvent.setTitle("Test product");
+        productCreatedEvent.setProductId(UUID.randomUUID().toString());
+        productCreatedEvent.setQuantity(1);
+        productCreatedEvent.setPrice(new BigDecimal(10));
+
+        String messageId = UUID.randomUUID().toString();
+        String messageKey = productCreatedEvent.getProductId();
+
+        ProducerRecord<String, ProductCreatedEvent> record = new ProducerRecord<>(
+            "",
+            messageKey,
+            productCreatedEvent
+        );
+        record.headers().add("messageId", messageId.getBytes());
+        record.headers().add(KafkaHeaders.RECEIVED_KEY, messageKey.getBytes());
+
+        // Act
+        ProcessedEventEntity processedEventEntity = new ProcessedEventEntity();
+        when(processedEventRepository.findByMessageId(anyString())).thenReturn(processedEventEntity);
+        when(processedEventRepository.save(any(ProcessedEventEntity.class)).thenReturn(null);
+
+        String responseBody = "{\"key\":\"value\"}";
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        ResponseEntity<String> responseEntity = new ResponseEntity<>(responseBody, headers, HttpStatus.OK);
+
+        when(restTemplate.exchange(
+            any(String.class), 
+            any(HttpMethod.class), 
+            isNull(), eq(String.class)
+            ))
+        .thenReturn(responseEntity);
+
+        kafkaTemplate.send(record).get();
+
+        // Assert
+        ArgumentCaptor<String> messageIdCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> messageKeyCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<ProductCreatedEvent> eventCaptor = ArgumentCaptor.forClass(ProductCreatedEvent.class);
+
+        verify(productCreatedEventHandler, timeout(5000).times(1))
+        .handle(
+            eventCaptor.capture(),
+            messageIdCaptor.capture(),
+            messageKeyCaptor.capture()
+        );
+
+        assertEquals(messageId, messageIdCaptor.getValue());
+        assertEquals(messageKey, messageKeyCaptor.getValue());
+        assertEquals(productCreatedEvent.getProductId(), eventCaptor.getValue().getProductId());
+
+    }
+}
+~
+Since we're using @MockBean
+ -> Spring will create a mock object of this bean
+ -> It will add it to the Spring Application Context.
+
+When running this test class
+  -> Since this object is present in the Application Context
+  -> any piece of code that needs to use this JPA repository will use this mocked version of the bean.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Testing Kafka Consumer
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+🤯⚠️🧨 Notice our test might fail if the AUTO_OFFSET_RESET configuration property has the default value  ´latest´
+ -> It's not set to ´earliest´, since the events might not get read when 
+
+<EmailNotificationMicroservice>
+[✏️#~/...KafkaConsumerConfiguration]
+...
+import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
+import ...
+
+@Configuration
+public class KafkaConsumerConfiguration {
+
+    private Environment environment;
+
+    public KafkaConsumerConfiguration(Environment environment) {
+        this.environment = environment;
+    }
+
+    @Bean
+    public ConsumerFactory<String, Object> consumerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ConsumerConfig.GROUP_ID_CONFIG, environment.getProperty("spring.kafka.consumer.group-id"));
+        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, environment.getProperty("spring.kafka.consumer.bootstrap-servers"));
+        config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        //config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
+        config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
+        config.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class);
+        config.put(JsonDeserializer.TRUSTED_PACKAGES, environment.getProperty("spring.kafka.consumer.properties.spring.json.trusted.packages"));
+        config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, environment.getProperty("spring.kafka.consumer.auto-offset-reset"));  //💥
+        return new DefaultKafkaConsumerFactory<>(config);
+    }
+
+    @Bean
+    ConcurrentKafkaListenerContainerFactory<String, Object> kafkaListenerContainerFactory(
+        ConsumerFactory<String, Object> ConsumerFactory, KafkaTemplate<String, Object> kafkaTemplate) {
+       ConcurrentKafkaListenerContainerFactory<String, Object> factory = new ConcurrentKafkaListenerContainerFactory<>();
+       factory.setConsumerFactory(consumerFactory);
+
+       DefaultErrorHandler errorHandler = new DefaultErrorHandler(new DeadLetterPublishingRecoverer(kafkaTemplate));
+       errorHandler.addNotRetriableExceptions(NotRetryableException.class);
+       factory.setCommonErrorHandler(errorHandler);
+
+       return factory;
+    }
+
+}
+
+
+<EmailNotificationMicroservice>
+[✏️#~/...application.properties]
+server.port=0
+spring.kafka.consumer.group-id=product-created-events
+spring.kafka.consumer.bootstrap-servers=localhost:9092,localhost:9094
+#spring.kafka.consumer.key-deserializer=org.apache.kafka.common.serialization.StringDeserializer
+#spring.kafka.consumer.value-deserializer=org.springframework.kafka.support.serializer.JsonDeserializer
+consumer.group-id=product-created-events
+spring.kafka.consumer.properties.spring.json.trusted.packages=com.learning.kafka.product.service
+spring.kafka.consumer.auto-offset-reset=earliest  #💥
+
+
+🧐🕵️‍♂️🔎 This configuration property AUTO_OFFSET_RESET_CONFIG
+ -> Tells consumer where to start reading messages from a partition when it joins consumer group.
+ -> If it's set to earliest, then consumer will start reading from the beginning of the partition
+    ..trying to make sure that it doesn't miss any existing messages.
+
+´latest´ which is the default value
+ -> Means the consumer will start reading from the end of the partition
+    ..only receiving new messages that were produced after a joint consumer group.

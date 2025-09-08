@@ -47,7 +47,7 @@ This flexibility of asynchronous communication can make systems more scalable an
 🚀 Apache Kafka 101
 ===============================================================================================================================
 📝 What is Apache Kafka?
-Apache Kafka is primarily used as a distributed Event Streaming Platform.
+Apache Kafka is primarily used as a Distributed Event Streaming Platform.
 It excels in collecting, processing, storing and integrating large volumes of data in real-time.
 Kafka allows different systems and applications to publish (produce) and subscribe to (consume) streams of events, 
 making it highly suitable for event-driven architectures
@@ -59,3 +59,233 @@ making it highly suitable for event-driven architectures
 
 📝 What are the main Apache Kafka Components?
 Cluster | Controller | Broker | Topic | Partitions | Replicas | Client (Producer/Consumer)
+
+
+
+
+
+~
+
+
+
+
+
+🚀 How to create a Kafka Producer (Spring Boot)
+===============================================================================================================================
+
+📝#1 Create Spring Boot Project
+---------------
+⚓ https://start.spring.io
+Add dependency  ´Spring for Apache Kafka [MESSAGING]´
+
+
+
+📝#2 Create Topic
+---------------
+org.springframework.kafka.config.TopicBuilder -> Spring utility class to create Kafka Topics
+org.apache.kafka.clients.admin.NewTopic;      -> TopicBuilder returns a NewTopic (org.apache.kafka)
+...
+✏️ >>>>>
+    @Bean
+    NewTopic createTopic() {
+        return TopicBuilder
+            .name("product-created-events-topic")
+            .partitions(3).replicas(3)
+            .configs(Map.of("min.insync.replicas", "2"))
+            .build();
+    }
+~
+🧐🕵️‍♂️🔎 To check if Topic was created successfully
+[IntelliJ] ProductsMicroservice >  ▶️ ProductsMicroserviceApplication 
+[terminal]
+$ cd {WORKSPACE}/kafka
+$ ./bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic product-created-events-topic
+
+...
+
+🤯⚠️🧨 Creating the topic beforehand is a best practice
+ -> To avoid runtime errors
+ -> Ensure correct topic configurations
+🧐🕵️‍♂️🔎 Auto-creation is usually disabled in production environments:
+  ✏️>>> auto.create.topics.enable=false
+
+🧐🕵️‍♂️🔎 @Bean TopicBuilder...build() is idempotent -> It won't override / nor cause errors if Topic already exists
+
+
+
+📝#3 Publish events in Kafka Topic (KafkaTemplate send Message)
+---------------
+🧐🕵️🔎 To publish Events in Kafka Topic...
+ -> We can use Kafka Template (A Special Client) provided by Spring Framework
+ => Kafka Template was designed to send/publish events to Kafka Topic
+    ..It's a small wrapper around Kafka Producer
+    ..Nicely integrated around Spring Features like Dependency Injection & Automatic Configuration
+
+🧨⚠️🤯 Kafka Messages are key-value pairs and we can specify the data type of this key-value pair via Generic Types at declaration
+e.g. KafkaTemplate<String, Event> kafkaTemplate;
+
+🧐🕵️🔎 KafkaTemplate provides a number of send/sendDefault methods that can be used to send Messages to Kafka Topic
+ -> Each method has different set of parameters that it accepts
+    send(String topic, Integer partition, Long timestamp, K key, V data) : CompletableFuture<SendResult<K,V>>  
+    send(String topic, Integer partition, K key, V data) : CompletableFuture<SendResult<K,V>>  
+    send(String topic, K key, V data) : CompletableFuture<SendResult<K,V>>  //💥
+    send(String topic, V data) : CompletableFuture<SendResult<K,V>>  
+    send(org.apache.kafka.clients.producer.ProducerRecord<K,V> record) : CompletableFuture<SendResult<K,V>>  
+    send(Message<?> message) : CompletableFuture<SendResult<K,V>>  
+    sendDefault(Integer partition, Long timestamp, K key, V data) : CompletableFuture<SendResult<K,V>>  
+    sendDefault(Integer partition, K key, V data) : CompletableFuture<SendResult<K,V>>  
+    sendDefault(K key, V data) : CompletableFuture<SendResult<K,V>>  
+    sendDefault(V data) : CompletableFuture<SendResult<K,V>>
+
+✏️ >>>>>
+SendResult<String, ProductCreatedEvent> result =
+          kafkaTemplate.send("product-created-events-topic", productId, productCreatedEvent).get();
+
+🧐🕵️🔎 From SendResult  .getRecordMetadata() method we can extract -> [partition | topic | offset | timestamp]
+ -> Very useful for Debugging & Monitoring purposes
+  o Offset track position of record in Topic Partition
+  o timestamp to measure latency or throughput of the producer 
+...
+
+
+🧐🕵️🔎 In Kafka we can send Messages synchronously/asynchronously
+Notice send/sendDefault methods return a CompletableFuture, so by default they are asynchronous operation
+📝>>> CompletableFuture is a Java Concurrency API class, which represents a future result of an Asynchronous Computation
+ -> It's used to perform operation asynchronously and then return result of that operation when it's completed
+ => To handle this operation result we can use  '.whenComplete(..)' method
+ => .whenComplete(..) method it's used to handle operation result whether  it's successful or not 
+    ..In case there were a failure in the Asynchronous Operation exception object won't be null
+ ✏️ future.whenComplete((result, exception) -> { ... });
+
+🧨⚠️🤯 To handle this CompletableFuture result, we must check if exception object is NULL or not
+✏️>>> future.whenComplete((result, exception) -> { 
+  if(exception != null) { exception.getMessage(); }
+  if(exception == null) { result.getRecordMetadata(); }
+});
+ -> Notice we use ´exception.getMessage();´ to retrieve the exception details
+ -> ´result.getRecordMetadata();´ is used to retrieve metadata associated with successfully sent message to Kafka Topic
+    ..Which Topic this message was persisted to ?
+    ..Which partition was used ?
+    ..What is the offset ?
+
+
+🧨⚠️🤯 If we'd like to block the current Thread, we have to call the  .join() | .get() method
+ -> .join() method will block the current Thread until the future is complete, then it'll return the result of computation once it's available
+ -> .get() method directly will return a SendResult<K,V>
+ => This way our Kafka publishing operation becomes Synchronous
+
+
+
+
+
+~
+
+
+
+
+
+🧨⚠️🤯 Acknowledgement, Retries & Idempotency are closely related
+Let's see how to configure and take advantage of it 👇👇👇
+. . .
+. .
+. 
+
+🚀 How to manage Acknowledgement & Retries❓
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+📝 Acknowledgement confituration properties
+---------------
+  -> spring.kafka.producer.acks={all|1|0}  #default
+  -> min.insync.replicas
+  -> replica.lag.time.max.ms
+
+
+📝 Retries confituration properties
+---------------
+ -> spring.kafka.producer.retries
+ -> spring.kafka.producer.properties.retry.backoff.ms=1000
+...
+🕵️ delivery.timeout.ms >= linger.ms + request.timeout.ms
+spring.kafka.producer.properties.delivery.timeout.ms=120000
+spring.kafka.producer.properties.linger.ms=0
+spring.kafka.producer.properties.request.timeout.ms=30000
+
+🧐🕵️🔎 Prefer delivery.timeout.ms with linger.ms and request.timeout.ms Instead of retries and retry.backoff.ms
+✅1. Simpler and More Accurate Timeout Management
+✅2. Avoid Inconsistencies
+✅  3. Cleaner and More Predictable Behavior
+===============================================================================================================================
+
+📢 Acknowledgement >>>>>
+📝#1 Default behavior
+---------------
+🧐🕵️🔎 By default Kafka Producer is configured to receive this acknowledgment from Leader broker only
+ -> So, once the Leader Broker stores the message successfully, it sends acknowledgment to Kafka Producer
+ => This configuration allow us to confirm that the message was received and stored
+
+🧨⚠️🤯 For those escenarios where is critical to ensure our Messages don't get lost
+✅ We can configure your Kafka producer to wait acknowledgment from all In-Sync replicas.
+🔎 If data scenario is NOT critical you can configure Kafka Producer NOT to wait for any acknowledgment at all
+
+[✏️#~/...application.properties]
+spring.kafka.producer.acks=all
+spring.kafka.producer.acks=1   #default
+spring.kafka.producer.acks=0
+
+🧨⚠️🤯 Notice that Kafka Producer will wait for acknowledgment not just from any broker, but only from in-Sync Replicas.
+ -> min.insync.replicas: Minimum number of ISR members that must acknowledge a write for it to be considered committed.
+ -> replica.lag.time.max.ms: Max time a follower can be behind before being removed from ISR.
+
+
+📝#2 In-Sync replicas
+---------------
+min.insync.replicas
+replica.lag.time.max.ms
+ -> min.insync.replicas: Minimum number of ISR members that must acknowledge a write for it to be considered committed.
+ -> replica.lag.time.max.ms: Max time a follower can be behind before being removed from ISR.
+...
+> What is the difference between Replicas and In-Sync Replicas (ISR)❓
+A REPLICA is a copy of a Kafka partition. It can be either a Leader or Follower.
+ -> Includes all brokers that have a copy of the partition’s data — regardless of whether they are up-to-date or not.
+..
+IN-SYNC REPLICAS is the subset of replicas that are fully caught up with the leader.
+
+
+
+📢 Retries >>>>>
+🧐🔎🕵️ Retry attempts are made at regular intervals which are controlled by property `retry.backoff.ms`
+ -> In this case Kafka Producer will retry ten times with one second per interval
+✏️ spring.kafka.producer.retries=10
+✏️ spring.kafka.producer.properties.retry.backoff.ms=1000
+
+#spring.kafka.producer.retries=10   #default => 2147483647           🔍
+#spring.kafka.producer.properties.retry.backoff.ms=1000  #(1 Second) 🔍
+spring.kafka.producer.properties.delivery.timeout.ms=120000          ✅
+spring.kafka.producer.properties.linger.ms=0                         ✅
+spring.kafka.producer.properties.request.timeout.ms=30000            ✅
+
+🤯⚠️🧨 A higher value of linger property, it can help your producer reduce the number of requests that
+it sends to the broker and increase the size of each request.
+And this can improve the throughput of the producer.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 How to manage Producer Idempotency❓
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+===============================================================================================================================
+🧨⚠️🤯 For Idempotence to work, we need to set below  ´spring.kafka.producer.properties´ ...
+ -> enable.idempotence=true
+ -> acks=all
+ -> retries must be greater than zero
+ -> max.in.flight.requests must be <= 5
+ => If those values are conflicting then you might get a ConfigException ⚠️❌
+...
+🧐🕵️‍♂️🔎 We could prefer  ´delivery.timeout.ms´  over  ´retries´ & ´retry.backoff.ms´
+delivery.timeout.ms has to be greater or equal to linger.ms + request.timeout.ms

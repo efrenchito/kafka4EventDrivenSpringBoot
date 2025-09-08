@@ -79,10 +79,10 @@ This is it must receive acknowledgment NOT only from Leader Broker, but also fro
 
 ~
 
-spring.kafka.producer.axks=all
+spring.kafka.producer.acks=all
 Waits for acknowledgment from all brokers
 ...
-spring.kafka.producer.axks=1
+spring.kafka.producer.acks=1
 Waits for acknowledgment from the Leader broker only
 ...
 spring.kafka.producer.acks=0
@@ -115,10 +115,10 @@ When Kafka Producer sends a Message we could have the following escenarios 👇�
  o No Response: If the producer is configured with property acks=0
  o Acknowledgment (ACK) of Successful Storage
  o Non-Retriable Error: A permanent problem that is unlikely to be resolved by retries
- o Retriable Error: A temporary problem that can be resolved by the send operation
+ o Retriable Error: A temporary problem that can be resolved by retrying the send operation
 ...
 🧐🕵️🔎 Kafka itself determines if the error is Retriable or NOT 
-e.g. Retriable     -> Network Error / Leader Broker is temporarily unavailable / There are't enough ISR
+e.g. Retriable     -> Network Error / Leader Broker is temporarily unavailable / There aren't enough ISR
 e.g. Non-Retriable -> Message size is too large and exceeds maximum limit
 =======================================================================================================================================
 
@@ -154,6 +154,7 @@ Default value is 120000 ms (2 minutes)
 
 -
 🕵️ delivery.timeout.ms >= linger.ms + request.timeout.ms
+-------------------------
 spring.kafka.producer.properties.linger.ms=0
 The maximum time in milliseconds that the producer will wait and buffer data before sending a batch of messages.
 The default value is 0
@@ -163,7 +164,7 @@ The maximum time to wait for a response from the broker after sending a request.
 The default value is 30000 ms
 
 ~
-So a higher value of linger property, it can help your producer reduce the number of requests that
+🤯⚠️🧨 A higher value of linger property, it can help your producer reduce the number of requests that
 it sends to the broker and increase the size of each request.
 And this can improve the throughput of the producer.
 
@@ -203,13 +204,17 @@ spring.kafka.producer.acks=all   #default => 1
 
 [terminal]
 $ cd {WORKSPACE}/kafka
-$ ./bin/kafka-topics.sh --bootstrap-server localhost:9092 
-    --create --topic product-created-events-topic --partitions 3 --replication-factor 3 --config min.insync.replicas=2
-$ ./bin/kafka-topics.sh --bootstrap-server localhost:9092 
-    --create --topic topic2 --partitions 3 --replication-factor 3
+$ ./bin/kafka-topics.sh --bootstrap-server localhost:9092    \
+    --create --topic product-created-events-topic            \
+    --partitions 3 --replication-factor 3                    \
+    --config min.insync.replicas=2  💥
+
+$ ./bin/kafka-topics.sh --bootstrap-server localhost:9092    \
+    --create --topic topic2                                  \
+    --partitions 3 --replication-factor 3
 
 $ ./bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe 
-Topic: product-created-events-topic    TopicId: {ID}    PartitionCount: 3    ReplicationFactor:3  Configs: min.insync.replicas=2,segment.bytes=1073741824
+Topic: product-created-events-topic    TopicId: {ID}    PartitionCount: 3    ReplicationFactor:3  Configs: 💥min.insync.replicas=2💥,segment.bytes=1073741824
         Topic: product-created-events-topic    Partition: 0    Leader: 3    Replicas: 3,1,2  Isr:  3,1,2
         Topic: product-created-events-topic    Partition: 1    Leader: 1    Replicas: 1,2,3  Isr:  3,1,2
         Topic: product-created-events-topic    Partition: 2    Leader: 2    Replicas: 2,3,1  Isr:  2,3,1
@@ -221,12 +226,13 @@ Topic: topic2    TopicId: {ID}    PartitionCount: 3    ReplicationFactor:3  Conf
 ~
 🧐🔎🕵️ Notice we have two Topics...
  -> `product-created-events-topic` has the min.insync.replicas configuration setted to  2
- -> `topic2` has NO that property
- => Let's update this topic `topic2` and configure the min.insync.replicas value
+ -> `topic2` doesn't have that property
+ => Let's update this topic `topic2` and configure the min.insync.replicas value  
 
 [terminal]
 $ ./bin/kafka-configs.sh --boostrap-server localhost:9092
-    --alter --entity-type topics  --entity-name topic2 --add-config min.insync.replicas=2
+    --alter --entity-type topics  --entity-name topic2     \
+    --add-config min.insync.replicas=2💥
 
 $ ./bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe 
 Topic: product-created-events-topic    TopicId: {ID}    PartitionCount: 3    ReplicationFactor:3  Configs: min.insync.replicas=2,segment.bytes=1073741824
@@ -833,8 +839,8 @@ This backoff time is crucial to prevent overloading the network or broker with r
 =======================================================================================================================================
 
 In previous lessons... 
-We've configured Kafka Producer using Application.properties file.
-It works well, but one thing I do not like about configuring producer in Application.properties file
+We've configured Kafka Producer using application.properties file.
+It works well, but one thing I do not like about configuring producer in application.properties file
 is that to configure key and value serializers, I need to type complete name of the class, including
 its package name.
 

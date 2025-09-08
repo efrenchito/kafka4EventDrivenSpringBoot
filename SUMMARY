@@ -142,8 +142,372 @@ What is the difference between LISTENERS & ADVERTISED_LISTENERS❓
 
 
 
+📢 S06: KafkaProducer Spring Boot
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+Include Spring dependency  ´Spring for Apache Kafka [MESSAGING]´
+...
+org.springframework.kafka.config.TopicBuilder -> Spring utility class to create Kafka Topics
+org.apache.kafka.clients.admin.NewTopic;      -> TopicBuilder returns a NewTopic (org.apache.kafka)
+~
+[IntelliJ] ProductsMicroservice >  ▶️ ProductsMicroserviceApplication 
+
+[terminal]
+$ cd {WORKSPACE}/kafka
+$ ./bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic product-created-events-topic
+=============================================================================================================================
+
+🚀 Kafka Producer Overview
+-------------------------
+🧐🕵️🔎 The main responsibilities of a Kafka Producer❓
+ o Publish/Produce Messages
+ o Serialize Messages to Binary format
+...
+When sending a message we have to specify the Topic name (It's mandatory), the partition is optional
+🧐🕵️‍♂️🔎 Spring Kafka (and Kafka in general) uses the DefaultPartitioner by default, which behaves like this:
+   -> Partition    :: Kafka will use specified target partition
+   -> Key          :: Kafka Producer applies a hash function and determines the target partition
+   -> Round/Robin  :: Kafka will assign the message to partitions evenly and sequentially
+                      (This is applied when NO partition nor key is specified)
+...
+🧨⚠️🤯 When sending a new message to Kafka topic, we could also specify the partition where we want to store it, this parameter is optional. 
+If we do not specify topic partition, then Kafka Producer will make this decision for us.
+📝 If a message key is provided, Kafka will hash that key and use the result to determine the partition, 
+  -> this ensures that all messages with the same key go to the same partition.
+📝 If NO message key is provided, kafka will distribute messages across partitions in a round robin fashion
+   -> ensuring a balanced load.
+
+🤯⚠️🧨 One of the key responsibilities of a Kafka Producer is to serialize messages into a binary format
+before they are transmitted over the network to Kafka Brokers.
+Serialization converts the message data, which might be in various formats (like Strings, Objects, etc...)
+into a standard binary format that can be efficiently transmitted and stored in Kafka
+
+
+
+🚀 Kafka Producer - Synchronous & Asynchronous Communication Style
+-------------------------
+Kafka Producer can send Messages to a Kafka Broker in two different ways:
+ o Synchronous
+ o Asynchronous
+...
+📝 Synchronous Communication Style 
+It's more reliable because it ensures that message was successfully stored before moving on to the next task.
+However, since producer will be waiting until it gets a response back, it can make your system a little bit slower.
+
+📝 Asynchronous Communication Style
+Kafka Producer will NOT be blocked/on-hold and it will continue its execution right away
+This way our events will be placed without waiting for Kafka Broker to acknowledge that we've received an event.
+ -> Once Kafka Broker sends its acknowledgement, we can handle it and process it with asynchronous callback
+
+
+
+🚀 Creating a Kafka Producer (Spring Boot Application)
+-------------------------
+To create a KafkaProducer (Spring Boot Application)
+o We'll use the dependencies bellow:
+   -> Spring Web [WEB]
+   -> Spring for Apache Kafka [MESSAGING]
+
+
+🚀 Kafka Producer configuration properties
+-------------------------
+🧐🕵️🔎 server.port=0  -> Assign a port randomly
+
+[✏️#~/...application.properties]
+server.port=0
+spring.kafka.producer.boostrap-servers=localhost:9092
+spring.kafka.producer.key-serializer=org.apache.kafka.common.serialization.StringSerializer
+spring.kafka.producer.value-serializer=org.springframework.kafka.support.serializer.JsonSerializer
+~
+✏️>>> spring.kafka.producer.boostrap-servers=localhost:9092
+On Windows, instead of 'localhost', you might need to use [::1]
+e.g. spring.kafka.producer.boostrap-servers=[::1]:9092
+🧐🕵️🔎 A boostrap server is an initial connection point for Kafka Client to connect to Kafka Cluster
+ -> The value of this property should be set to a comma separated list of host and port number pairs
+    ..Representing addresses of Kafka brokers in the cluster
+🧨⚠️🤯 For development purposes one server is enough.
+ -> However if you have more brokers in your cluster, is better to provide at least 2 bootstrap servers
+
+
+[✏️#~/...KakfaConfig.java]
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.kafka.config.TopicBuilder;
+import org.apache.kafka.clients.admin.NewTopic;
+
+@Configuration
+public class KafkaConfig {
+
+    @Bean
+    NewTopic createTopic() {
+        return TopicBuilder
+            .name("product-created-events-topic")
+            .partitions(3)
+            .replicas(3)
+            .configs(Map.of("min.insync.replicas", "2"))
+            .build();
+    }
+}
+~
+🧐🕵️🔎 Since we'll use this class to create related Kafka Beans
+ -> It must be annotated with @Configuration annotation and the method with @Bean
+ -> Notice we're using TopicBuilder from org.springframework.kafka package 
+ -> TopicBuilder returns a NewTopic variable from org.apache.kafka package
+ => TopicBuilder provides utility methods like .name() | .partitions() | .replicas() | .configs()  & .build()
+...
+🧨⚠️🤯 Defining N Partitions, this means we can have up to N Microservices consuming messages from this Topic 
+🧨⚠️🤯 Defining N Replicas, this means the Topic will have N copies, 1 Leader and N-1 Followers having one copy on each broker
+  -> Partitions improve application Throughput whereas Replicas add Fault Tolerance/Resiliency
+
+🧐🕵️🔎 The method .configs() from the class org.springframework.kafka.config.TopicBuilder...
+ -> Is used to define custom configuration properties for the Kafka topic you are creating
+ => Retention policies | Compaction settings | Cleanup configurations | Min/max message sizes | Segment settings 
+✏️>>>
+   .configs(Map.of(
+        "retention.ms", "604800000",       // 7 days
+        "cleanup.policy", "delete",        // or "compact"
+        "max.message.bytes", "1048576",    // 1MB max message size
+        "min.insync.replicas", "2"         // Min Number of Replicas that must acknowledge the write ops
+    ))
+...
+When you require that messages are acknowledged...
+ -> This makes writting to a Topic a little bit slower
+ => But it also makes it more reliable
+
+
+
+🚀 Run SpringBoot app to create Kafka Topic
+-------------------------
+[IntelliJ]
+ProductsMicroservice > 
+  ▶️ ProductsMicroserviceApplication 
+
+
+[terminal]
+$ cd {WORKSPACE}
+$ cd kafka
+$ ./bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic product-created-events-topic
+Topic: product-created-events-topic    TopicId: {ID}    PartitionCount: 3    ReplicationFactor:3  Configs: min.insync.replicas=2,segment.bytes=1073741824
+        Topic: product-created-events-topic    Partition: 0    Leader: 3    Replicas: 3,1,2  Isr:  3,1,2
+        Topic: product-created-events-topic    Partition: 1    Leader: 1    Replicas: 1,2,3  Isr:  3,1,2
+        Topic: product-created-events-topic    Partition: 2    Leader: 2    Replicas: 2,3,1  Isr:  2,3,1
+~
+🧐🕵️🔎 Isr stands for In-Sync Replicas 
+ -> This is Replicas that are up to date with the leader and can take over if the leader fails
+
+
+
+🚀 Creating Rest Controller
+@RestController/@RequestMapping/@{Get|Post|Put|Delete}Mapping/@RequestBody/ResponseEntity.status().body();
+-------------------------
+[✏️#/...model.CreateProductRestModel]
+package com.learning.kafka.product.model;
+
+import ...
+
+public class CreateProductRestModel {
+    private String title;
+    private BigDecimal price;
+    private Integer quantity;
+
+    //Getters
+    //Setters
+}
+
+
+[✏️#~/...ProductCreatedEvent]
+package com.learning.kafka.product.service;
+
+//@NoArgsConstructor
+//@AllArgsConstructor
+public class ProductCreatedEvent {
+    
+    private String productId;
+    private String title;
+    private BigDecimal price;
+    private Integer quantity;
+
+    //@Getters
+    //@Setters
+}
+~
+🧨⚠️🤯 The Serialization/Deserialization process involves creating empty instances of this class by using no-args constructor
+ -> Later on fields will be populated using the setter methods
+🧐🕵️🔎 The no-Args constructor is needed for Serialization/Deserialization
+ -> Notice when Kafka Producer publishes this event Object, it will be serialized into a byte array
+ => Later on Kafka Consumer will need to Deserialize this message by using this same Event class
+
+
+[✏️#~/...ErrorMessage]
+@NoArgsConstructor
+@AllArgsConstructor
+@Getters
+@Setters
+public class ErrorMessage {
+    private Date timeStamp;
+    private String message;
+    private String details;
+}
+~
+This ErrorMessage class will be converted into JSON string and it will be returned back in the HTTP response body.
+
+
+
+[✏️#/...ProductService]
+package com.learning.kafka.product.service;
+
+public interface ProductService {
+
+    String createProduct(CreateProductRestModel productRestModel) 💥throws Exception💥;
+
+}
+
+
+[✏️#~/...ProductServiceImpl]
+@Service
+public class ProductServiceImpl implements ProductService {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+
+    KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate;
+
+    public ProductServiceImpl(KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate) {
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
+    @Override 
+    public String createProduct(CreateProductRestModel productRestModel) 💥throws Exception💥 {
+        String productId = UUID.randomUUID().toString();
+        //TODO: Persist Product Details into database table before publishing an Event
+
+        ProductCreatedEvent productCreatedEvent = new ProductCreatedEvent(
+            productId,
+            productRestModel.getTitle(),
+            productRestModel.getPrice(),
+            productRestModel.getQuantity()
+        );
+
+        LOGGER.info("Before publishing a ProductCreatedEvent");  //💥
+
+        SendResult<String, ProductCreatedEvent> result =
+          kafkaTemplate.send("product-created-events-topic", productId, productCreatedEvent).get();
+        
+        LOGGER.info("Partition: " + result.getRecordMetadata().partition());  //💥
+        LOGGER.info("Topic: " + result.getRecordMetadata().topic());  //💥
+        LOGGER.info("Offset: " + result.getRecordMetadata.offset());  //💥
+
+        LOGGER.info("***** Returning product id");  //💥
+
+        return productId;
+    }
+}
+~
+🧐🕵️🔎 From .getRecordMetadata() method we can extract -> [partition | topic | offset | timestamp]
+ -> Very useful for Debugging & Monitoring purposes
+  o Offset track position of record in Topic Partition
+  o timestamp to measure latency or throughput of the producer 
+
+
+[✏️#/...controller.ProductController]
+@RestController
+@RequestMapping("/products")
+public class ProductController {
+   @PostMapping
+   public ResponseEntity<String> createProduct(@RequestBody CreateProductRestModel product) {
+      return ResponseEntity.status(HttpStatus.CREATED).body("");
+   }
+}
+
+~
+🧐🕵️🔎 To publish Events in Kafka Topic...
+ -> We can use Kafka Template (A Special Client) provided by Spring Framework
+ => Kafka Template was designed to send/publish events to Kafka Topic
+    ..It's a small wrapper around Kafka Producer
+    ..Nicely integrated around Spring Features like Dependency Injection & Automatic Configuration
+
+🧨⚠️🤯 Kafka Messages are key-value pairs and we can specify the data type of this key-value pair via Generic Types at declaration
+e.g. KafkaTemplate<String, Event> kafkaTemplate;
+
+🧐🕵️🔎 KafkaTemplate provides a number of send/sendDefault methods that can be used to send Messages to Kafka Topic
+ -> Each method has different set of parameters that it accepts
+    send(String topic, Integer partition, Long timestamp, K key, V data) : CompletableFuture<SendResult<K,V>>  
+    send(String topic, Integer partition, K key, V data) : CompletableFuture<SendResult<K,V>>  
+    send(String topic, K key, V data) : CompletableFuture<SendResult<K,V>>  //💥
+    send(String topic, V data) : CompletableFuture<SendResult<K,V>>  
+    send(org.apache.kafka.clients.producer.ProducerRecord<K,V> record) : CompletableFuture<SendResult<K,V>>  
+    send(Message<?> message) : CompletableFuture<SendResult<K,V>>  
+    sendDefault(Integer partition, Long timestamp, K key, V data) : CompletableFuture<SendResult<K,V>>  
+    sendDefault(Integer partition, K key, V data) : CompletableFuture<SendResult<K,V>>  
+    sendDefault(K key, V data) : CompletableFuture<SendResult<K,V>>  
+    sendDefault(V data) : CompletableFuture<SendResult<K,V>>
+
+
+🧐🕵️🔎 In Kafka we can send Messages synchronously/asynchronously
+Notice send/sendDefault methods return a CompletableFuture, so by default they are asynchronous operation
+📝>>> CompletableFuture is a Java Concurrency API class, which represents a future result of an Asynchronous Computation
+ -> It's used to perform operation asynchronously and then return result of that operation when it's completed
+ => To handle this operation result we can use  '.whenComplete(..)' method
+ => .whenComplete(..) method it's used to handle operation result whether  it's successful or not 
+    ..In case there were a failure in the Asynchronous Operation exception object won't be null
+ ✏️ future.whenComplete((result, exception) -> { ... });
+
+🧨⚠️🤯 To handle this CompletableFuture result, we must check if exception object is NULL or not
+✏️>>> future.whenComplete((result, exception) -> { 
+  if(exception != null) { exception.getMessage(); }
+  if(exception == null) { result.getRecordMetadata(); }
+});
+ -> Notice we use ´exception.getMessage();´ to retrieve the exception details
+ -> ´result.getRecordMetadata();´ is used to retrieve metadata associated with successfully sent message to Kafka Topic
+    ..Which Topic this message was persisted to ?
+    ..Which partition was used ?
+    ..What is the offset ?
+
+
+🧨⚠️🤯 If we'd like to block the current Thread, we have to call the  .join() | .get() method
+ -> .join() method will block the current Thread until the future is complete, then it'll return the result of computation once it's available
+ -> .get() method directly will return a SendResult<K,V>
+ => This way our Kafka publishing operation becomes Synchronous
+
+
+
+
+
+~
+
+
+
+
+
 📢 S07: Acknowledgement & Retries
-=============================================================================================================================PARTI
+=============================================================================================================================
+🧐🕵️🔎 By default Kafka Producer is configured to receive this acknowledgment from Leader broker only
+ -> So, once the Leader Broker stores the message successfully, it sends acknowledgment to Kafka Producer
+ => This configuration allow us to confirm that the message was received and stored
+...
+🧨⚠️🤯 For those escenarios where is critical to ensure our Messages don't get lost
+✅ We can configure your Kafka producer to wait acknowledgment from all In-Sync replicas.
+🔎 If data scenario is NOT critical you can configure Kafka Producer NOT to wait for any acknowledgment at all
+
+[✏️#~/...application.properties]
+spring.kafka.producer.acks=all
+spring.kafka.producer.acks=1
+spring.kafka.producer.acks=0
+~
+🧐🕵️‍♂️🔎 spring.kafka.producer.acks=all   #default => 1
+
+
+🧨⚠️🤯 Notice that Kafka Producer will wait for acknowledgment not just from any broker, but only from in-Sync Replicas.
+ -> min.insync.replicas: Minimum number of ISR members that must acknowledge a write for it to be considered committed.
+ -> replica.lag.time.max.ms: Max time a follower can be behind before being removed from ISR.
+...
+What is the difference between Replicas and In-Sync Replicas (ISR)❓
+¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨
+📝 A REPLICA is a copy of a Kafka partition. It can be either a Leader or Follower.
+ -> Includes all brokers that have a copy of the partition’s data — regardless of whether they are up-to-date or not.
+📝 IN-SYNC REPLICAS is the subset of replicas that are fully caught up with the leader.
+
+
+~
+
 
 📝 PARTION   -> PARALLELISM, ORDERING, SCALABILITY AND FAULT TOLERANCE
 ----------
@@ -162,8 +526,7 @@ distribute messages or partitions evenly across available resources.
 
 📝 REPLICAS  -> REDUNDANCY, RESILIENCY
 ----------
-
-What is the difference between Replicas and In-Sync Replicas (ISR)❓
+o What is the difference between Replicas and In-Sync Replicas (ISR)❓
 ¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨
 A REPLICA is a copy of a Kafka partition. It can be either a Leader or Follower.
  -> Includes all brokers that have a copy of the partition’s data — regardless of whether they are up-to-date or not.
@@ -180,12 +543,302 @@ Properties related to ISR:
 
 Acknowledgement is about RELIABILITY
 
+When Kafka Producer sends a Message we could have the following escenarios 👇👇👇
+ o No Response: If the producer is configured with property acks=0
+ o Acknowledgment (ACK) of Successful Storage
+ o Non-Retriable Error: A permanent problem that is unlikely to be resolved by retries
+ o Retriable Error: A temporary problem that can be resolved by retrying the send operation
+...
+🧐🕵️🔎 Kafka itself determines if the error is Retriable or NOT 
+e.g. Retriable     -> Network Error / Leader Broker is temporarily unavailable / There aren't enough ISR
+e.g. Non-Retriable -> Message size is too large and exceeds maximum limit
+
+
+📝 Retries Configuration properties
+-----------
+spring.kafka.producer.retries=10
+The default value of this property is too large (2147483647). Which basically means the producer will retry indefinitely
+.. until the message is delivered  or until the delivery timeout is reached.
+
+spring.kafka.producer.properties.retry.backoff.ms=1000
+How long the producer will wait before attempting to retry a failed request.
+Default value is 100 ms
+(So it helps to avoid repeatedly sending requests in a very tight loop.)
+
+spring.kafka.producer.properties.delivery.timeout.ms=120000
+The maximum time producer can spend trying to deliver the message. 
+Default value is 120000 ms (2 minutes)
+
+-
+🕵️ delivery.timeout.ms >= linger.ms + request.timeout.ms
+-------------------------
+spring.kafka.producer.properties.linger.ms=0
+The maximum time in milliseconds that the producer will wait and buffer data before sending a batch of messages.
+The default value is 0
+
+spring.kafka.producer.properties.request.timeout.ms=30000
+The maximum time to wait for a response from the broker after sending a request.
+The default value is 30000 ms
+
+~
+🤯⚠️🧨 A higher value of linger property, it can help your producer reduce the number of requests that
+it sends to the broker and increase the size of each request.
+And this can improve the throughput of the producer.
+
+
+
+📝 Configuring Producer Acknowledgment in Spring Boot Microservice
+-------------------------
+[✏️#~/...application.properties]
+server.port=0
+spring.kafka.producer.boostrap-servers=localhost:9092
+spring.kafka.producer.key-serializer=org.apache.kafka.common.serialization.StringSerializer
+spring.kafka.producer.value-serializer=org.springframework.kafka.support.serializer.JsonSerializer
+
+spring.kafka.producer.acks=all   #default => 1
+
+
+
+📝 The min.insync.replicas configuration
+-------------------------
+-> Create topic with config  ´min.insync.replicas=2´
+[terminal]
+$ cd {WORKSPACE}/kafka
+$ ./bin/kafka-topics.sh --bootstrap-server localhost:9092    \
+    --create --topic product-created-events-topic            \
+    --partitions 3 --replication-factor 3                    \
+    --config min.insync.replicas=2  💥
+
+$ ./bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe 
+Topic: product-created-events-topic    TopicId: {ID}    PartitionCount: 3    ReplicationFactor:3  Configs: 💥min.insync.replicas=2💥,segment.bytes=1073741824
+
+-> Alter existing topic :: Add config  ´min.insync.replicas=2´
+$ ./bin/kafka-configs.sh --boostrap-server localhost:9092
+    --alter --entity-type topics  --entity-name topic2     \
+    --add-config min.insync.replicas=2💥
+
+
+...
+
+
+🚀 Kafka Producer : Retries
+===================================
+🧐🔎🕵️ Retry attempts are made at regular intervals which are controlled by property `retry.backoff.ms`
+ -> In this case Kafka Producer will retry ten times with one second per interval
+✏️ spring.kafka.producer.retries=10
+✏️ spring.kafka.producer.properties.retry.backoff.ms=1000
+
+
+
+🚀 Kafka Producer : Delivery & Request Timeout
+=====================================================
+[✏️#~/...application.properties]
+server.port=0
+spring.kafka.producer.boostrap-servers=localhost:9092
+spring.kafka.producer.key-serializer=org.apache.kafka.common.serialization.StringSerializer
+spring.kafka.producer.value-serializer=org.springframework.kafka.support.serializer.JsonSerializer
+spring.kafka.producer.acks=all     #default => 1
+
+#spring.kafka.producer.retries=10   #default => 2147483647           🔍
+#spring.kafka.producer.properties.retry.backoff.ms=1000  #(1 Second) 🔍
+spring.kafka.producer.properties.delivery.timeout.ms=120000          ✅
+spring.kafka.producer.properties.linger.ms=0                         ✅
+spring.kafka.producer.properties.request.timeout.ms=30000            ✅
+~
+🧐🔎🕵️ delivery.timeout.ms has to be greater or equal to linger.ms + request.timeout.ms
+
+
+Why prefer delivery.timeout.ms with linger.ms and request.timeout.ms Instead of retries and retry.backoff.ms in Kafka❓
+-------------------------
+✅1. Simpler and More Accurate Timeout Management
+  -> With delivery.timeout.ms, you specify the maximum total time Kafka has to send a record, including retries, network delays, and batching (via linger.ms).
+  -> This removes the need to manually compute:  (retries * retry.backoff.ms) + Network Delays + Batch Latency
+✅2. Avoid Inconsistencies 
+  -> If you use `retries` and `retry.backoff.ms` without aligning delivery.timeout.ms, 
+     Kafka may stop retrying before exhausting retries because the overall timeout was reached.
+✅  3. Cleaner and More Predictable Behavior
+  -> By focusing on delivery.timeout.ms, you delegate all retry logic and timing to Kafka’s internal logic, avoiding brittle configurations.
+
+
+...
+
+
+[✏️#~/...KafkaProducerConfig.java]
+@Configuration
+public class KafkaProducerConfig {
+
+    @Value("${spring.kafka.producer.bootstrap-servers}")
+    private String bootstrapServers;
+
+    @Value("${spring.kafka.producer.key-serializer}")
+    private String keySerializer;
+
+    @Value("${spring.kafka.producer.value-serializer}")
+    private String valueSerializer;
+
+    @Value("${spring.kafka.producer.acks}")
+    private String acks;
+
+    @Value("${spring.kafka.producer.properties.delivery.timeout.ms}")
+    private String deliveryTimeout;
+
+    @Value("${spring.kafka.producer.properties.linger.ms}")
+    private String linger;
+
+    @Value("${spring.kafka.producer.properties.request.timeout.ms}")
+    private String requestTimeOut;
+
+    Map<String, Object> producerConfig() {
+        Map<String, Object> config = new HashMap<>();
+
+        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, keySerializer);
+        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, valueSerializer);
+        config.put(ProducerConfig.ACKS_CONFIG, acks);
+        config.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, deliveryTimeout);
+        config.put(ProducerConfig.LINGER_MS_CONFIG, linger);
+        config.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, requestTimeout);
+    }
+
+
+    @Bean
+    ProducerFactory<String, ProductCreatedEvent> producerFactory() {
+        return new DefaultKafkaProducerFactory<>(producerConfigs);
+    }
+
+    @Bean
+    KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate() {
+        return new KafkaTemplate<String, ProductCreatedEvent>(producerFactory());
+    }
+
+}
+~
+🧐🕵️‍♂️🔎 Notice this KafkaProducerConfig class 
+ -> Uses member fields that get assigned with @Value annotation pointing to application.properties
+ -> A Hashmap<String, Object> stores the corresponding configuration values
+ -> DefaultKafkaProducerFactory bean gets instantiated with previous hashMap
+ -> KafkaTemplate<String, ProductCreatedEvent> takes defaultkafkaProducerFactory bean as argument
+
+
+
+
+
+~
+
+
+
+
+
+📢 S08: Kafka Producer : Idempotency
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+🧨⚠️🤯 For Idempotence to work, we need to set below  ´spring.kafka.producer.properties´ ...
+ -> enable.idempotence=true
+ -> acks=all
+ -> retries must be greater than zero
+ -> max.in.flight.requests must be <= 5
+ => If those values are conflicting then you might get a ConfigException ⚠️❌
+...
+🧐🕵️‍♂️🔎 We could prefer  ´delivery.timeout.ms´  over  ´retries´ & ´retry.backoff.ms´
+delivery.timeout.ms has to be greater or equal to linger.ms + request.timeout.ms
+=======================================================================================================================================
+
+🧨⚠️🤯 For Idempotence to work, we need to set below  ´spring.kafka.producer.properties´ ...
+ -> enable.idempotence=true
+ -> acks=all
+ -> retries must be greater than zero
+ -> max.in.flight.requests must be <= 5
+ => If those values are conflicting then you might get a ConfigException ⚠️❌
+
+
+[✏️#~/...application.properties]
+...
+spring.kafka.producer.properties.enable.idempotence=true
+#spring.kafka.producer.properties.acks=all                       #default => 1
+#spring.kafka.producer.properties.retries=10                     #default => 2147483647
+spring.kafka.producer.properties.delivery.timeout.ms=120000          
+spring.kafka.producer.properties.max.in.flight.requests.per.connection=5
+
+spring.kafka.producer.properties.delivery.timeout.ms=120000
+spring.kafka.producer.properties.linger.ms=0
+spring.kafka.producer.properties.request.timeout.ms=30000
+~
+🧐🕵️🔎 'max.in.flight.requests.per.connection' means that Kafka Producer 
+  -> Can send up to N requests or batches of messages to broker at the same time without waiting for acknowledgements
+  => This can improve throughput and performance of your broker. 
+🤯⚠️🧨  Notice it might introduce risk of message reordering in case of failures and retries
+ -> That's why it's important to keept it <= 5, to maintain the right order and avoid messages loss
+
+🧐🕵️‍♂️🔎 We could prefer  ´´delivery.timeout.ms´  over  ´retries´ & ´retry.backoff.ms´
+delivery.timeout.ms has to be greater or equal to linger.ms + request.timeout.ms
+
+
+...
+
+🚀 Enable Kafka Producer Idempotent - Spring Bean
+-------------------------
+[✏️#~/...KafkaConfig.java]
+@Configuration
+public class KafkaConfig {
+
+   @Value("${spring.kafka.producer.properties.enable.idempotence}")  //💥
+   private boolean idempotence;
+
+   @Value("${spring.kafka.producer.acks}")  //💥
+   private String acks;
+
+   @Value("${spring.kafka.producer.properties.delivery.timeout.ms}")
+   private String deliveryTimeout;
+
+   @Value("${spring.kafka.producer.properties.linger.ms}")
+   private String linger;
+
+   @Value("${spring.kafka.producer.properties.request.timeout.ms}")
+   private String requestTimeOut;
+
+    @Value("${spring.kafka.producer.properties.max.in.flight.requests.per.connection}")  //💥
+    private integer inflightRequests;
+
+    Map<String, Object> producerConfig() {
+        Map<String, Object> config = new HashMap<>();
+      
+        ...
+        config.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, idempotence);  //💥
+        config.put(ProducerConfig.ACKS_CONFIG, acks);  //💥
+        config.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, deliveryTimeout);
+        config.put(ProducerConfig.LINGER_MS_CONFIG, linger);
+        config.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, requestTimeout);
+        config.put(ProducerConfig.MAX_INFLIGHT_REQUESTS_PER_CONNECTION, inflightRequests);  //💥
+    }
+
+
+    @Bean
+    ProducerFactory<String, ProductCreatedEvent> producerFactory() {
+        return new DefaultKafkaProducerFactory<>(producerConfigs);
+    }
+
+    @Bean
+    KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate() {
+        return new KafkaTemplate<String, ProductCreatedEvent>(producerFactory());
+    }
+
+}
+
+___
+
+
+
+
+
+~
+
 
 
 
 
 📢 S09: Kafka Consumer
-=============================================================================================================================PARTI
+=============================================================================================================================
+
+PARTI
 In order to declare a Microservice as a Kafka Consumer
 We create our Spring Boot project adding `[MESSAGING] Spring for Apache Kafka` as dependency
 Then create a new class annotated as @Component and use annotations below 👇

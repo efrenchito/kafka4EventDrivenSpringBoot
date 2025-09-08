@@ -93,14 +93,15 @@ However it's still recommended to explicitly set this property to true
 Otherwise in case of conflicting values this property can be disabled automatically for us
  -> asks=all  |  retries=2147483647  |  max.in.flight.requests.per.connection=5
 
-🧨⚠️🤯 For Idempotence to work...
+🧨⚠️🤯 For Idempotence to work, we need to set below  ´spring.kafka.producer.properties´ ...
+ -> enable.idempotence=true
  -> acks=all
  -> retries must be greater than zero
  -> max.in.flight.requests must be <= 5
  => If those values are conflicting then you might get a ConfigException ⚠️❌
 
 
-[application.properties]
+[✏️#~/...application.properties]
 spring.kafka.producer.properties.enable.idempotence=true
 
 spring.kafka.producer.properties.acks=all
@@ -134,7 +135,7 @@ spring.kafka.producer.value-serializer=org.springframework.kafka.support.seriali
 spring.kafka.producer.acks=all     #default => 1    💥
 
 #spring.kafka.producer.retries=10   #default => 2147483647  💥         
-#spring.kafka.producer.properties.retry.backoff.ms=1000  #(1 Second) 
+#spring.kafka.producer.properties.retry.backoff.ms=1000  #(1 Second)
 spring.kafka.producer.properties.delivery.timeout.ms=120000          
 spring.kafka.producer.properties.linger.ms=0                         
 spring.kafka.producer.properties.request.timeout.ms=30000

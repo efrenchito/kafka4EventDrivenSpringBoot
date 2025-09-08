@@ -68,7 +68,7 @@ Another responsibility of Kafka producer is to specify the name of Kafka topic, 
 
 🧨⚠️🤯 When sending a new message to Kafka topic, we could also specify the partition where we want to store it, this parameter is optional
 If we do not specify topic partition, then Kafka Producer will make this decision for us.
-📝 If a message key is provided, Kafka will hash the key and use the result to determine the partition, 
+📝 If a message key is provided, Kafka will hash that key and use the result to determine the partition, 
   -> this ensures that all messages with the same key go to the same partition.
 📝 If NO message key is provided, kafka will distribute messages across partitions in a round robin fashion
    -> ensuring a balanced load.
@@ -270,6 +270,10 @@ How does the Kafka Producer behave when sending a User LoggedIn Event to the Kaf
 
 🚀 Creating a New Spring Boot Application
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+To create a KafkaProducer (Spring Boot Application)
+o We'll use the dependencies bellow:
+   -> Spring Web [WEB]
+   -> Spring for Apache Kafka [MESSAGING]
 =======================================================================================================================================
 
 ⚓ https://start.spring.io
@@ -321,7 +325,7 @@ spring.kafka.producer.value-serializer=org.springframework.kafka.support.seriali
 
 If property  'server.port' is NOT defined it will use port 8080 by default
 server.port=0 Will assign a port randomly
- -> This ensures that if we launch the same application again NO PORT conflict will happen
+ -> This ensures that if we launch the same application multiple times NO PORT conflict will happen
 
 spring.kafka.producer.boostrap-servers=localhost:9092
 On Windows, instead of 'localhost', you might need to use [::1]
@@ -369,7 +373,7 @@ Before Kafka producer sends a message to Kafka topic. It's a good practice to cr
 
 [✏️#~/...KakfaConfig.java]
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.
+import org.springframework.context.annotation.Bean;
 import org.springframework.kafka.config.TopicBuilder;
 import org.apache.kafka.clients.admin.NewTopic;
 
@@ -451,7 +455,7 @@ Topic: product-created-events-topic    TopicId: {ID}    PartitionCount: 3    Rep
 🧐🕵️🔎 The fact that I have this information displayed...
  -> Confirms my Java code does work, and it did create a New Java Topic
 🧐🕵️🔎 Isr stands for In-Sync Replicas 
- -> This is Replicas that are up to date with the leader and can take ove if the leader fails
+ -> This is Replicas that are up to date with the leader and can take over if the leader fails
 
 
 
@@ -489,7 +493,7 @@ public class ProductController {
 📝 Notice this CreateProductRestModel class, represents the payload that will be passed to the POST method
  -> This Object will contain the information for the Product itself that will be created
 [✏️#/...CreateProductRestModel]
-package com.learning.kafka.product.rest;
+package com.learning.kafka.product.model;
 
 import ...
 
@@ -584,7 +588,7 @@ public class ProductController {
 🚀 Creating Event Class
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 =======================================================================================================================================
-Now, the information that this event object will contain is up to you and up to the needs of your application.
+Now, the information that this event object will contain is up to you (The needs of your application)
 So what is it that needs to be done when this event object is consumed from Kafka topic?
 And depending on those business needs, you will decide what information to include in this event object.
 For this sample project, we'll make this event object contain same product details information that was used to create a product.
@@ -606,12 +610,13 @@ public class ProductCreatedEvent {
     //@Setters
 }
 ~
+🧨⚠️🤯 The Serialization/Deserialization process involves creating empty instances of this class by using no-args constructor
+ -> Later on fields will be populated using the setter methods
 🧐🕵️🔎 The no-Args constructor is needed for Serialization/Deserialization
  -> Notice when Kafka Producer publishes this event Object, it will be serialized into a byte array
  => Later on Kafka Consumer will need to Deserialize this message by using this same Event class
 
-🧨⚠️🤯 The Serialization/Deserialization process involves creating empty instances of this class by using no-args constructor
- -> Later on fields will be populated using the setter methods
+
 
 
 
@@ -699,7 +704,7 @@ e.g. KafkaTemplate<String, Event> kafkaTemplate;
  -> Each method has different set of parameters that it accepts
     send(String topic, Integer partition, Long timestamp, K key, V data) : CompletableFuture<SendResult<K,V>>  
     send(String topic, Integer partition, K key, V data) : CompletableFuture<SendResult<K,V>>  
-    send(String topic, K key, V data) : CompletableFuture<SendResult<K,V>>  
+    send(String topic, K key, V data) : CompletableFuture<SendResult<K,V>>  //💥
     send(String topic, V data) : CompletableFuture<SendResult<K,V>>  
     send(org.apache.kafka.clients.producer.ProducerRecord<K,V> record) : CompletableFuture<SendResult<K,V>>  
     send(Message<?> message) : CompletableFuture<SendResult<K,V>>  
@@ -730,8 +735,9 @@ Notice send/sendDefault methods return a CompletableFuture, so by default they a
     ..What is the offset ?
 
 
-🧨⚠️🤯 If we'd like to block the current Thread, we have to call the  .join() method
+🧨⚠️🤯 If we'd like to block the current Thread, we have to call the  .join() | .get() method
  -> .join() method will block the current Thread until the future is complete, then it'll return the result of computation once it's available
+ -> .get() method directly will return a SendResult<K,V>
  => This way our Kafka publishing operation becomes Synchronous
 
 
@@ -1106,16 +1112,16 @@ public class ProductServiceImpl implements ProductService {
             productRestModel.getQuantity()
         );
 
-        LOGGER.info("Before publishing a ProductCreatedEvent");
+        LOGGER.info("Before publishing a ProductCreatedEvent");  //💥
 
         SendResult<String, ProductCreatedEvent> result =
           kafkaTemplate.send("product-created-events-topic", productId, productCreatedEvent).get();
         
-        LOGGER.info("Partition: " + result.getRecordMetadata().partition());
-        LOGGER.info("Topic: " + result.getRecordMetadata().topic());
-        LOGGER.info("Offset: " + result.getRecordMetadata.offset());
+        LOGGER.info("Partition: " + result.getRecordMetadata().partition());  //💥
+        LOGGER.info("Topic: " + result.getRecordMetadata().topic());  //💥
+        LOGGER.info("Offset: " + result.getRecordMetadata.offset());  //💥
 
-        LOGGER.info("***** Returning product id");
+        LOGGER.info("***** Returning product id");  //💥
 
         return productId;
     }
