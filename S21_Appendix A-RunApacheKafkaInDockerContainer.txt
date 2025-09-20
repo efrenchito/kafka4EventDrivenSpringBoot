@@ -28,7 +28,7 @@
 
 
 
-📣 Section 02 - Apache Kafka Broker
+📣 Section 21 - Appendix A: Run Apache Kafka in a Docker Container
 =======================================================================================================================================
 
 

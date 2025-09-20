@@ -47,7 +47,7 @@ To work with a Kafka Consumer within Spring Boot...
 We'll use a @Component class 
  -> @KafkaListener is a class/method level annotation that allow us to define the Topics we'll be listening to
  -> @KafkaHandler allow us to specify the format type a method will handle
-    .. This will define the  link between a 
+    .. This will define the link between a 
 =======================================================================================================================================
 
 🚀 Kafka Consumer - Introduction
@@ -64,7 +64,7 @@ In this lesson we'll create Kafka Consumers as another Microservice
                                                                /           <Consumer> 
                                                               /
       Products         Publish                        Consume               Email 
-    Microservice  ------------------>    Topic    --------------->       Notification
+    Microservice  ------------------>    Topic    <---------------       Notification
      <Producer>        (Message)                     (Message)           Microservice
                                                               \           <Consumer>
                                                                \
@@ -171,7 +171,7 @@ spring.kafka.consumer.properties.spring.json.trusted.packages=*
 🧐🕵️🔎 `bootstrap-servers` property, it is used to specify a list of bootstrap servers.
  -> A Bootstrap Server is used for Initial Connection to Kafka cluster.
  -> Notice this is very similar to the one we use for a producer
- => However here we're using 'consumer' instead of 'producer'
+ => However here we're using 💥'consumer'💥  instead of 'producer'
 ~
 🧨⚠️🤯 One server is enough, but if you have more brokers in the cluster...
  -> Then it is better to provide at least two bootstrap servers here.
@@ -184,15 +184,15 @@ spring.kafka.consumer.properties.spring.json.trusted.packages=*
 🧐🕵️🔎 'spring.json.trusted.packages' property specify one or more packages that are considered trusted for deserialization when processing JSON messages.
   -> If you know the application that publishes events is trustable
   => Then you can allow any package and use '*' asterix instead of a package name.
-  ✅ For security reasons it's adivisable to use least-privilege principle specifying a particular package
+  ✅ For security reasons it's adivisable to use Least-Privilege Principle specifying a particular package
 
 
 [✏️#~/...application.properties]
 server.port=0
+spring.kafka.consumer.group-id=product-created-events
 spring.kafka.consumer.boostrap-servers=localhost:9092
 spring.kafka.consumer.key-deserializer=org.apache.kafka.common.serialization.StringDeserializer
 spring.kafka.consumer.value-deserializer=org.springframework.kafka.support.serializer.JsonDeserializer
-spring.kafka.consumer.group-id=product-created-events
 spring.kafka.consumer.properties.spring.json.trusted.packages=*
 
 
@@ -205,7 +205,7 @@ spring.kafka.consumer.properties.spring.json.trusted.packages=*
 
 
 
-🚀 Kafka Consumer : @KafkaEventListener and @KafkaHandler annotations
+🚀 Kafka Consumer : @KafkaListener and @KafkaHandler annotations
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 =======================================================================================================================================
 Let's create a new class that will be used to handle or consume 'Product Created Events'
@@ -235,7 +235,7 @@ public class ProductCreatedEventHandler {
 🧐🕵️🔎 @KafkaListener annotation can be used as {Class|Method}-level annotation
  -> It's used to mark a Class/Method as target for incoming messages from Kafka Topic
 ...
-🧨⚠️🤯 @KafkaListener can be configured to listen to multiple topics
+🧨⚠️🤯 @KafkaListener can be configured to listen from multiple topics
 e.g. @KafkaListener(topics = {"topic1", "topic2"})
  -> A single Kafka Consumer can consume messages from multiple topics
 

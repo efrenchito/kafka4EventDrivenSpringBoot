@@ -169,6 +169,18 @@ Notice send/sendDefault methods return a CompletableFuture, so by default they a
     ..What is the offset ?
 
 
+
+📝#4 - How to manage Synchronous/Asynchronous Operations
+---------------
+🧐🕵️🔎 In Kafka we can send Messages synchronously/asynchronously
+Notice send/sendDefault methods return a CompletableFuture, so by default they are asynchronous operation
+
+📝>>> CompletableFuture is a Java Concurrency API class, which represents a future result of an Asynchronous Computation
+ -> It's used to perform operation asynchronously and then return result of that operation when it's completed
+ => To handle this operation result we can use  '.whenComplete(..)' method
+ => .whenComplete(..) method it's used to handle operation result whether  it's successful or not 
+    ..In case there were a failure in the Asynchronous Operation exception object won't be null
+
 🧨⚠️🤯 If we'd like to block the current Thread, we have to call the  .join() | .get() method
  -> .join() method will block the current Thread until the future is complete, then it'll return the result of computation once it's available
  -> .get() method directly will return a SendResult<K,V>
@@ -289,3 +301,32 @@ And this can improve the throughput of the producer.
 ...
 🧐🕵️‍♂️🔎 We could prefer  ´delivery.timeout.ms´  over  ´retries´ & ´retry.backoff.ms´
 delivery.timeout.ms has to be greater or equal to linger.ms + request.timeout.ms
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Java Configuration
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+===============================================================================================================================
+🤯⚠️🧨 Java Code Configuration Properties have higher priority than configuration properties defined in application properties file.
+ ->  This means that if you have the same property key in both places, 
+     ...the value defined here in Java code will overwrite the value defined in the application properties file.
+
+🧐🕵️‍♂️🔎 Configuring KafkaProducer using Java code
+It gives you more flexibility because here in Java code you can apply custom business logic.
+And if needed, you can configure your Kafka producer based on certain logical conditions.
+
+✏️ >>>>>
+We can use @Value annotation which set existing property values defined at ´application.properties´ into member fields
+We can also use  ´org.springframework.core.env.Environment´ object, and retrive those values via environment.getProperty("{PROPERTY}");
+
+✅ KafkaProperties -> reads automatically all properties under spring.kafka.* in your application.{yml|properties}
+Map<String, Object> props = new HashMap<>(kafkaProperties.buildConsumerProperties());
+return new DefaultKafkaConsumerFactory<>(props);

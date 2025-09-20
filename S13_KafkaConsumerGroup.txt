@@ -1,0 +1,472 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgment & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handling Deserialization Errors
+📝 S11 : Kafka Consumer - Kafka Consumer Dead Letter Topic
+📝 S12 : Kafka Consumer - Exceptions and Retries
+📝 S13 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S14 : Kafka Consumer Idempotency
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 13 - Kafka Consumer - Multiple Consumers in a Consumer Group
+=======================================================================================================================================
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+🚀 Introduction to Kafka Consumer Group
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+In this lessons, we'll learn how to start multiple Kafka consumers and how to make them work together as a group.
+                                                           
+                                                              [SMS]
+                                                   _____  [Notification]
+                                                  /       [Microservice]
+                                                 /
+                                                /
+                                               /
+                                              /               [Email]    
+ [ProductsMicroservice]   ---------------> [Topic] -----   [Notification] |  
+                                              \            [Microservice] | |
+                                               \                      ____| |
+                                                \                     ______|
+                                                 \             [Push]
+                                                  \_____    [Notification]
+                                                            [Microservice]
+
+If we have multiplie instances of ´EmailNotificationMicroservice´
+ -> We would NOT want to replicate the same message across those multiple instancess
+ -> To solve this problem, we must create a Consumer Group 
+ => By registering those instances as part of the same Consumer Group
+    ..We're ensuring our message is consumed by one single instance of that Consumer Group
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Rebalancing and Partition Assignment in Apache Kafka
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+In this lesson, we'll learn a little bit more about:
+ -> Consumers, consumer groups and how they read data from Kafka Topic and its partitions.
+
+🤯⚠️🧨 This is important to understand how this works, because it will help you decide:
+ - How many partitions to create in a topic?
+ - How many microservices you can start if you want to scale up your application?
+
+
+📝 Rebalancing >>>
+🧐🕵️‍♂️🔎 What is Rebalancing?
+Every time a new instance joins/exits the Consumer Group...
+ -> This implies Partitions are reassigned to those new Consumer instances
+ => Basically new messages will be redistributed corresponding to the new Partition assignation
+
+
+📝 Having More Consumers than Partitions >>>
+🧐🕵️‍♂️🔎 What would happen when having more instances than Topic Partitions❓
+ -> Once instances are assigned to all existing partitions
+ => Extra instances will remain "Idle"
+
+🤯⚠️🧨 Two consumers from the same consumer group cannot read messages from the same partition
+🤯⚠️🧨 You should NOT start more consumers than the number of partitions you have in the topic.
+e.g. If your topic has only one partition, then you can start only one consumer microservice.
+e.g. If your topic has three partitions, then you can scale your application by starting three instances only.
+
+🧐🕵️‍♂️🔎 If you start more instances, than the number of partitions you have in your Kafka topic.
+Then those extra instances will sit idle.
+
+
+📝 Heart beat >>>
+So while your Kafka consumer microservices are running...
+Each of them will be sending heartbeat signals to Kafka Broker, 
+letting it know that it's running and consuming new messages.
+ -> If one of thsse Kafka consumers stops, then it'll also stop sending heartbeat signals to Kafka Broker.
+ -> When Kafka Broker notices that there are no heartbeats coming from a consumer
+    .. Then, it will remove that consumer from Consumer Group and it will initiate rebalancing.
+
+🧐🕵️‍♂️🔎 At Rebalancing, Kafka Cluster will check how many consumers are running and how many partitions you have in Kafka topic
+ -> It will reassign partitions, trying to make sure that each partition is read by one consumer.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Assigning Microservice to a Consumer Group in Apache Kafka
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+In this lesson, you will learn how to assign Kafka consumer microservice to a group
+There are multiple ways to do it:
+
+📝#1. Through @KafkaListener annotation by adding ´groupId´ attribute
+---------------
+<EmailNotificationMicroservice>
+[✏️#~/...ProductCreatedEventHandler]
+
+@Component
+@KafkaListener(topics = "product-created-event-topic", 💥groupId="product-created-event"💥)
+public class ProductCreatedEventHandler { ... }
+
+
+📝#2. application.properties ´spring.kafka.consumer.group-id´
+---------------
+By default Spring for Apache Kafka will look for the value defined at property:
+ -> ´spring.kafka.consumer.group-id´
+
+
+📝#3. Using ConsumerFactory @Configuration bean
+---------------
+<EmailNotificationMicroservice>
+[✏️#~/...KafkaConsumerConfiguration]
+
+@Configuration
+public class KafkaConsumerConfiguration {
+
+    private Environment environment;
+
+    public KafkaConsumerConfiguration(Environment environment) {
+        this.environment = environment;
+    }
+
+    @Bean
+    public ConsumerFactory<String, Object> consumerFactory() {
+        Map<String, Object> config = new HashMap<>();
+      💥config.put(ConsumerConfig.GROUP_ID_CONFIG, environment.getProperty("spring.kafka.consumer.group-id"));💥
+        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, environment.getProperty("spring.kafka.consumer.bootstrap-servers"));
+        config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
+        config.put(JsonDeserializer.TRUSTED_PACKAGES, environment.getProperty("spring.kafka.consumer.properties.spring.json.trusted.packages"));
+        return new DefaultKafkaConsumerFactory<>(config);
+    }
+
+...
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Starting up multiple instances of the same Microservice
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+To start working with multiple instances of the same Microservice...
+ -> We need to set the property  ´server.port´
+...
+
+By default the server.port will be set to 8080. If we try to start multiple isntances it will say the port is being used already.
+ -> This will happen with any port number assigned
+ -> By defining the server.port value to 0, it will assign any random port available
+
+
+[terminal](1)]
+$ cd {WORKSPACE}/<EmailNotificationMicroservice>
+$ ls 
+$ HELP.md    mvnw     mvnw.cmd    pom.xml    src     target
+$ mvn spring-boot:run  |  $ ./gradlew bootRun
+
+
+📝 To start one more instance of the same EmailNotificationMicroservice, just run the previous command
+...
+[terminal(2)]
+$ cd {WORKSPACE}/<EmailNotificationMicroservice>
+$ mvn spring-boot:run  |  $ ./gradlew bootRun
+
+[terminal(3)]
+$ cd {WORKSPACE}/<EmailNotificationMicroservice>
+$ mvn spring-boot:run  |  $ ./gradlew bootRun
+
+
+🧐🕵️‍♂️🔎 So if you see that in your application, one instance of your microservice is not enough, 
+If you want to start up more instances, you can easily do it.
+🤯⚠️🧨 Just remember...
+ -> The number of instances we start should NOT be greater than the number of partitions in our Kafka topic
+ => Otherwies extra instances will sit idle.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 How partitions assignment works in Kafka?
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+✏️>>> Let's start one by one three instances of our application <EmailNotifiactionMicroservice> (Kafka Consumers)
+[terminal(1)]
+$ cd {WORKSPACE}/<EmailNotificationMicroservice>
+$ mvn spring-boot:run  |  $ ./gradlew bootRun
+2025-09-13T06:50:42.053-05:00 INFO 24766 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    :
+product-created-events: partitions assigned: 
+[product-created-events-topic-0, product-created-events-topic-1, product-created-events-topic-2]
+
+
+✏️>>> Now, let's start one more instance
+
+[terminal(2)]
+$ cd {WORKSPACE}/<EmailNotificationMicroservice>
+$ mvn spring-boot:run  |  $ ./gradlew bootRun
+2025-09-13T06:50:42.053-05:00 INFO 24766 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    :
+product-created-events: partitions assigned: 
+[product-created-events-topic-2]
+
+...
+
+🔎 >>>
+[terminal(1)]
+$ cd {WORKSPACE}/<EmailNotificationMicroservice>
+$ mvn spring-boot:run  |  $ ./gradlew bootRun
+2025-09-13T06:50:42.053-05:00 INFO 24766 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    :
+product-created-events: partitions assigned: 
+[product-created-events-topic-0, product-created-events-topic-1]
+
+
+✏️>>> Now, let's start one more instance
+
+[terminal(3)]
+$ cd {WORKSPACE}/<EmailNotificationMicroservice>
+$ mvn spring-boot:run  |  $ ./gradlew bootRun
+2025-09-13T06:50:42.053-05:00 INFO 24766 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    :
+product-created-events: partitions assigned: 
+[product-created-events-topic-0]
+
+🔎 >>>
+[terminal(1)]
+$ cd {WORKSPACE}/<EmailNotificationMicroservice>
+$ mvn spring-boot:run  |  $ ./gradlew bootRun
+2025-09-13T06:50:42.053-05:00 INFO 24766 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    :
+product-created-events: partitions assigned: 
+[product-created-events-topic-1]
+
+🔎 >>>
+[terminal(0)]
+$ cd {WORKSPACE}/<EmailNotificationMicroservice>
+$ mvn spring-boot:run  |  $ ./gradlew bootRun
+2025-09-13T06:50:42.053-05:00 INFO 24766 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    :
+product-created-events: partitions assigned: 
+[product-created-events-topic-2]
+
+
+🧐🕵️‍♂️🔎 So every time we start or stop Kafka... 
+Consumers that belong to the same consumer group partitions will be reassigned among available Kafka consumers.
+And this process of reassigning partitions it is called rebalancing.
+
+🧐🕵️‍♂️🔎 During this process, (Rebalancing)
+Kafka ensures that each partition is consumed by only one consumer and the group my product created.
+Events topic has three partitions, and I have three consumers running each instance consuming messages
+from one partition.
+
+🤯🕵️‍♂️🧨 Starting more consumers will not help because only one consumer can read messages from one partition.
+If I start more consumers than the number of partitions I have on my Kafka topic
+ -> those consumers will sit idle.
+
+
+✏️>>> Stop two of the instances running and check how rebalancing works on the remaining one
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Multiple Consumers Consuming Messages from Kafka Topic
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+Now that you know how to start multiple consumers and how partition assignment works...
+Let's check how multiple consumers can read messages from Kafka topic.
+
+
+✏️>>> Add productId to add visibility to identify which instance receives what Product
+
+<EmailNotifiactionMicroservice>
+[✏️#~/...ProductCreatedEventHandler.java]
+@Component
+@KafkaListener(topics="product-created-events-topic")
+public class ProductCreatedEventHandler {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+    
+    private RestTemplate restTemplate;
+
+    public ProductCreatedEventHandler(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
+
+    @KafkaHandler
+    public void handle(ProductCreatedEvent productCreatedEvent) {
+        //if(true) throw new NotRetryableException("An error took place. No need to consume this message again");
+        LOGGER.info("Received a new event: " + productCreatedEent.getTitle() 
+          + " with productId: " + productCreatedEvent.getProductId());  //💥
+
+        String requestUrl = "http://localhost:8082/response/200"; 
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(requestUrl, HttpMethod.GET, null, String.class);
+            if(response.getStatusCode().value() == HttpStatus.OK.value()) {
+                LOGGER.info("Received response from a remote service: " + response.getBody());
+            }
+        } catch(ResourceAccessException ex) {
+            LOGGER.error(ex.getMessage());
+            throw new RetryableException(ex);
+        } catch(HttpServerErrorException | Exception ex) {
+            LOGGER.error(ex.getMessage());
+            throw new NotRetryableException(ex);
+        }
+    }
+}
+
+
+✏️>>> Let's start one instance
+[terminal(1)]
+$ cd {WORKSPACE}/<EmailNotificationMicroservice>
+$ mvn spring-boot:run  |  $ ./gradlew bootRun
+2025-09-13T06:50:42.053-05:00 INFO 24766 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    :
+product-created-events: partitions assigned: 
+[product-created-events-topic-0, product-created-events-topic-1, product-created-events-topic-2]
+
+📝 As we've seen, it will be assigned to all partitions
+  -> So, if we publish messages to that Topic,  it will receive all of them
+
+
+✏️>>> If I start two more instances...
+ -> Each one will be assigned a partition
+
+🧐🕵️‍♂️🔎 Now that I have three instances running. Let's send one message and see how it works...
+ -> All three instances of email notification microservice consume messages from the same topic.
+ -> But even though I have three instances running I expect only one instance to receive this message.
+    ... And this is because all three instances are part of the same Consumer Group.
+
+
+
+
+
+~
+
+
+
+
+
+❓ Quiz. Apache Kafka Consumer Groups
+Quiz 8|7 questions
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+📝 Question 1:
+What is the primary function of Consumer Groups in Apache Kafka❓
+[]  To increase message production speed from Kafka Producers
+✅  To enable paralallel processing of messages from a topic with multiple consumers
+[]  To encrypt messages for secure transmission between producers and consumers
+~
+Consumer groups in Kafka allow multiple consumers to form a group and collaboratively 
+process messages from a topic. Each consumer in the group reads messages from one or more 
+partitions of the topic, enhancing throughput and scalability.
+
+
+📝 Question 2:
+What happens when a new consumer joins a consumer group in Kafka❓
+[] The consumer group stops consuming messages until the new consumer is fully integrated.
+✅ Kafka rebalances the topic partitions among all consumers in the group
+[] The new consumer takes over all the messages processing from the existing consumers
+~
+When a new consumer joins a consumer group, Kafka triggers a rebalance of the topic partitions
+among all consumers in the group. This rebalancing ensures that the message load is distributed evenly 
+across the consumers in the group
+
+
+📝 Question 3:
+How does Kafka manage message distribution to consumers within a consumer group❓
+✅ By sending each message to only one consumer in the group
+[] By broadcasting every message to all consumers in the group
+[] By storing messages in a central database accessible to all consumers
+~
+Kafka ensures message delivery to consumers in a group by assigning each message to only one consumer in the group.
+This approach prevents duplicate processing of the same message by multiple consumers in the group
+
+
+📝 Question 4:
+How does Apache Kafka assign partitions to consumers within a consumer group❓
+✅ Each consumer in a group is assigned a unique set of partitions from multiple topics
+[] All consumers in a group are assigned the same set of partitions from a topic
+[] Partitions are assigned randomly to consumers regardless of the group
+~
+Kafka assigns each consumer in a Consumer Group a unique set of partition from the Topics they subscribe to.
+This partition assignment ensures that each partition is processed by only one consumer in the group, 
+allowing for efficient parallel processing of the data.
+
+
+📝 Question 5:
+What determines the number of partitions a consumer in a group can process in Kafka❓
+[] The total numbers of consumers in the Kafka Cluster
+✅ The numbers of partitions in the topic and the number of consumers in the consumer group
+[] The consumer's processing speed and capacity
+~
+The number of partitions that a consumer can process is determined by the total 
+number of partitions in the topic and the number of consumers in the consumer group.
+Kafka strives to balance the partition assignment across consumers in a group to ensure even 
+distribution and efficient processing.
+
+
+📝 Question 6:
+What happens if the number of consumers in a Kafka Consumer Group exceeds the number of partitions in a topic❓
+[] Each consumer gets assigned multiple partitions
+✅ Some consumers will sit idle and will not be assigned any partitions
+[] The Kafka broker automatically increases the number of partitions
+~
+If the number of consumers in a Consumer Group exceeds the number of partitions in the topic, 
+some consumers will not be assigned any partitions. This is because Kafka ensures that each 
+partition is only consumed by one consumer from the group.
+
+
+📝 Question 7:
+What happens when a consumer in a Kafka Consumer Group shuts down❓
+[] The partitions assigned to the shutdown consumer remain unprocessed
+✅ Kafka rebalalnces the partitions, reassigning them among the remaining consumers
+[] The consumer group stops consuming messages until the consumers restarts.
+~
+When a consumer in a Consumer Group shuts down, Kafka triggers a rebalance of the partitions.
+The partitions previously assigned to the shutdown consumer are reassigned among the remaining 
+active consumers in the group, ensuring continued processing of messages.

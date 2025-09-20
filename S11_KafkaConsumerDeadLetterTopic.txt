@@ -36,14 +36,14 @@
 'ProductCreatedEvent' Java class.
 
 🧨⚠️🤯 If another MicroService publishes messages to our Topic that are NOT compatible with 'ProductCreatedEvent' class
-'EmailNotifiactionMicroservice' will try to consume that new message, but since that message doesn't match with the format expected
+'EmailNotificationMicroservice' will try to consume that new message, but since that message doesn't match with the format expected
 ❌ It'll fail trying to deserialize it and create 'ProductCreatedEvent' throwing a 'DeserializationException'
  -> Unless we handle correctly this exception, the error will happen again and again because of retry mechanism
  => Kafka Consumer will get stuck in an endles loop trying to consume that message again and again
 
 
 ✅ We already solved this problem by using 'ErrorHandlingDeserializer'
- -> However what we did is we ignored those bad messages that could NOT be deserialized
+ -> However what we did is ignoring those messages that could NOT be deserialized
 
 🧐🕵️🔎 Ignoring messages that could NOT be deserialized is NOT the best solution
  -> That's when Dead Letter Topic comes handy
@@ -61,9 +61,9 @@ The ConsumerFactory defines a Consumer Properties Map called config which is pas
  -> Properties like GROUP_ID_CONFIG | BOOTSTRAP_SERVERS_CONFIG | KEY_DESERIALIZER_CLASS_CONFIG | VALUE_DESERIALIZER_CLASS_CONFIG | TRUSTED_PACKAGES
 
 📝 ConcurrentKafkaListenerContainerFactory >>>
-Once instantiated this ListenerFactory via ConcurrentKafkaListenerContainerFactory
+Once instantiated this ListenerFactory (ConcurrentKafkaListenerContainerFactory)
  -> We'll set the ConsumerFactory and ErrorHandler
-   - The ConsumerFactory is the @Bean created at the previous method
+   - The ConsumerFactory is the @Bean ConsumerFactory created before
    - The ErrorHandler is created via DefaultErrorHandler which takes a DeadLetterPublishingRecoverer object as constructor argument
    - The DeadLetterPublishingRecoverer takes a KafkaTemplate object as constructor argument
 ...
@@ -97,14 +97,14 @@ We have 'ProductsMicroservice' which acts as a Kafka Producer, publishing 'Produ
 It uses a JSON Serializer to serialize messages in JSON Format
 ...
 📝 On the right side, in our diagram...
-We have 'EmailNotifiactionMicroservice' which acts as a Kafka Consumer, it expects and processes messages in JSON format
+We have 'EmailNotificationMicroservice' which acts as a Kafka Consumer, it expects and processes messages in JSON format
 It uses JSON Deserializer to convert those messages from JSON into Java Object using 'ProductCreatedEvent'
 
 🧐🕵️🔎 Everything will be working well as long as 'ProductsMicroservice' produces Kafka Messages that are compatible with 
 'ProductCreatedEvent' Java class.
 
 🧨⚠️🤯 If another MicroService publishes messages to our Topic that are NOT compatible with 'ProductCreatedEvent' class
-'EmailNotifiactionMicroservice' will try to consume that new message, but since that message doesn't match with the format expected
+'EmailNotificationMicroservice' will try to consume that new message, but since that message doesn't match with the format expected
 ❌ It'll fail trying to deserialize it and create 'ProductCreatedEvent' throwing a 'DeserializationException'
  -> Unless we handle correctly this exception, the error will happen again and again because of retry mechanism
  => Kafka Consumer will get stuck in an endles loop trying to consume that message again and again
@@ -317,8 +317,8 @@ public class KafkaConsumerConfiguration {
 =======================================================================================================================================
 
 [IntelliJ]
-EmailNotifiactionMicroservice
-  > ▶️ EmailNotifiactionMicroserviceApplication
+EmailNotificationMicroservice
+  > ▶️ EmailNotificationMicroserviceApplication
 
 ...
 
@@ -352,8 +352,8 @@ Pretty | Raw | Preview | Visualize | Text
 
 
 [IntelliJ]
-EmailNotifiactionMicroservice
-  > ▶️ EmailNotifiactionMicroserviceApplication
+EmailNotificationMicroservice
+  > ▶️ EmailNotificationMicroserviceApplication
 ~
 ✅ ProductCreatedEventHandler     : Received a new event:  iPhone11
 

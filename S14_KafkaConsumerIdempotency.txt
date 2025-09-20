@@ -1,0 +1,688 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgment & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handling Deserialization Errors
+📝 S11 : Kafka Consumer - Kafka Consumer Dead Letter Topic
+📝 S12 : Kafka Consumer - Exceptions and Retries
+📝 S13 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S14 : Kafka Consumer Idempotency
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 14 - Kafka Consumer - Idempotency
+=======================================================================================================================================
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+🚀 Introduction to Kafka Consumer Idempotency
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+In the following lessons you'll learn about Kafka Consumer Idempotency
+
+
+📝 What is Idempotent Consumer❓
+An idempotent Apache Kafka Consumer is a consumer that can process the same message multiple times 
+...without causing any side effects of data inconsistency
+
+🤯⚠️🧨 Idempotency makes sure that a message is processed exactly one time.
+ -> Even if producer sends thethe same message multiple times, or even if retrying takes place (error)
+ -> Idempotent consumer will process this message only one time.
+
+
+Kafka Producer 
+  -> Publish a new message to a Kafka Topic
+Kafka Consumer 
+  -> Consumes that message
+  -> Starts processing it. Depending on the business logic, it can do several different things:
+    e.g. Reads from DB
+    e.g. Perform business logic
+    e.g. Writes to DB
+    e.g. Publish to another Topic
+
+
+´max.poll.interval.ms.exceeded´ property...
+ -> Controls how much time Kafka Consumer has to process pulled messages
+    Before it could pull a new batch of messages from Kafka topic.  
+
+🧐🕵️‍♂️🔎 If Kafka Consumer does NOT pull new messages from Kafka Broker in a period longer than the ´max.poll.interval.ms.exceeded´
+-> Kafka Broker will assume this Consumer has failed or it's stopped and it will remove it from Consumer Group
+-> Triggering Rebalancing (Reassigning partitions to other consumers)
+
+🧐🕵️‍♂️🔎 If consumer microservice, was not able to update partition offset.
+ -> It means that message was not successfully consumed.
+ => Kafka Broker will deliver that message to the same/another instance of same Microservice (Once it rejoins to Consumer Group)
+
+...
+
+📝 Kafka Producer can deliver the same message multiple times...
+ -> If ´max.poll.interval.ms.exceeded´ time is exceeded and consumer wasn't able to update Offset
+ -> If it's not correctly set as Idempotent (Via properties) and retry process come into picture
+
+
+
+🕵️‍♂️ Avoiding Duplicate Messages >>>
+---------------
+ o Idempotent Producer
+ o Idempotent Consumer
+ o Transactions
+~
+🧐🕵️‍♂️🔎 Transactions help us group multiple message and database operations together 
+So that they all either succeed together / fail and get aborted.
+If they are aborted then your microservice can retry the aborted operation from a clean state.
+And this also helps us to avoid duplicate writes to database and consuming duplicate messages from Kafka Topic.
+
+🤯⚠️🧨 Depending on the business logic in your application
+ -> None of these techniques, if used alone, guarantee that there will be no duplicate processing of a message.
+
+
+✏️>>> To implement Itempotent Consumer
+Before processing a message we'll check in DB if MessageID has been already processed 
+✅ If it was already processed then this message should be skipped
+❌ It it wan't processed already then we proceed with Consumer Flow
+
+
+
+
+
+~
+
+
+
+
+
+
+🚀 Include a unique ID into message header
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+In this video lesson, I will update products microservice to make it include a unique ID
+This message ID will then be read by consumer microservice to check if message with this ID was already
+processed or not. 
+ -> If message with provided ID was already processed, then consumer microservice will simply skip this message.
+
+Now there are different ways how you can include a unique ID in a message:
+ -> Into message payload.
+ -> As a message key
+ -> As a message header
+
+
+✏️>>> Let's see how to include a message header via Producer
+Unfortunately KafkaTemplate.send(...) method doesn't include an overloaded version that accepts message headers as parameter
+~
+If you take a look each of those overload methotds will create a ProducerRecord
+and pass it as argument to observeSend(..) method
+✏️ ProducerRecord<K,V> producerRecord = new ProducerRecord<>(. . .);
+✏️ return observeSend(producerRecord);
+...
+However ProducerRecord takes headers as Constructor argument
+🤯⚠️🧨 So, if we want to include headers to our Producer 
+ -> We'll need to use ProducerRecord class
+ => So, let's create a ProducerRecord object outside of send method
+    ... and then pass it to a send method as a parameter
+
+
+[✏️#~/...ProductServiceImpl]
+import org.apache.kafka.clients.producer.ProducerRecord;  //💥
+
+@Service
+public class ProductServiceImpl implements ProductService {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+
+    KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate;
+
+    public ProductServiceImpl(KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate) {
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
+    @Override 
+    public String createProduct(CreateProductRestModel productRestModel) throws Exception {
+        String productId = UUID.randomUUID().toString();
+        //TODO: Persist Product Details into database table before publishing an Event
+
+        ProductCreatedEvent productCreatedEvent = new ProductCreatedEvent(
+            productId,
+            productRestModel.getTitle(),
+            productRestModel.getPrice(),
+            productRestModel.getQuantity()
+        );
+
+        LOGGER.info("Before publishing a ProductCreatedEvent");
+
+        ProducerRecord<String, ProductCreatedEvent> producerRecord =                         //💥
+          new ProducerRecord<>("topic2", productId, productCreatedEvent);                    //💥
+        producerRecord.headers().add("messageId", UUID.randomUUID().toString().getBytes());  //💥
+
+        SendResult<String, ProductCreatedEvent> result = 
+          kafkaTemplate.send(💥producerRecord💥).get();
+        //  kafkaTemplate.send("topic2", productId, productCreatedEvent).get();              //💥
+        
+        LOGGER.info("Partition: " + result.getRecordMetadata().partition());
+        LOGGER.info("Topic: " + result.getRecordMetadata().topic());
+        LOGGER.info("Offset: " + result.getRecordMetadata.offset());
+
+        LOGGER.info("***** Returning product id");
+
+        return productId;
+    }
+}
+~
+🧐🕵️‍♂️🔎 Notice we've created an additional UUID
+ -> However we could've used productId as the messageKey & messageId at the same time
+
+
+
+
+
+~
+
+
+
+
+
+
+🚀 Reading unique ID from message header
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+In this lesson, we will work with consumer microservice and will make it read message ID from message header.
+
+
+<EmailNotifiactionMicroservice>
+[✏️#~/...ProductCreatedEventHandler.java]
+
+import org.springframework.messaging.handler.annotation;
+
+@Component
+@KafkaListener(topics="product-created-events-topic")
+public class ProductCreatedEventHandler {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+    
+    private RestTemplate restTemplate;
+
+    public ProductCreatedEventHandler(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
+
+    @KafkaHandler
+    //public void handle(ProductCreatedEvent productCreatedEvent) {
+    public void handle(
+💥    @Payload ProductCreatedEvent productCreatedEvent,
+💥    @Header("messageId") String messageId,
+💥    @Header(KafkaHeaders.RECEIVED_KEY) String messageKey
+    ) {
+        //if(true) throw new NotRetryableException("An error took place. No need to consume this message again");
+        LOGGER.info("Received a new event: " + productCreatedEent.getTitle() 
+          + " with productId: " + productCreatedEvent.getProductId());  //💥
+
+        String requestUrl = "http://localhost:8082/response/200"; 
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(requestUrl, HttpMethod.GET, null, String.class);
+            if(response.getStatusCode().value() == HttpStatus.OK.value()) {
+                LOGGER.info("Received response from a remote service: " + response.getBody());
+            }
+        } catch(ResourceAccessException ex) {
+            LOGGER.error(ex.getMessage());
+            throw new RetryableException(ex);
+        } catch(HttpServerErrorException | Exception ex) {
+            LOGGER.error(ex.getMessage());
+            throw new NotRetryableException(ex);
+        }
+    }
+}
+~
+🧐🕵️‍♂️🔎 By default this @Header(..) values are mandatory which means if NO present an Exception will be thrown
+ -> However, you can mark them as optional by passing the attribute required=false so when not found it will be set to null
+✏️ @Header(value="messageId", required=false) String messageId
+
+
+
+
+
+~
+
+
+
+
+
+
+🚀 Adding database-related dependencies
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+Now that we updated our consumer microservice to read unique ID from message headers, we can store this message ID in a database.
+🧐 Notice, we'll use an in-memory database called ´H2´
+
+⚓ https://mvnrepository.com
+ -> Search for latest H2 Database Engine
+ => com.h2database:h2:2.3.232:scope=test
+...
+ -> Search for: 'Spring Boot Starter Data JPA'
+ => org.springframework.boot:spring-boot-starter-data-jpa
+
+
+✏️>>> Add it to your pom.xml...
+<dependencies>
+  <dependency>
+    <groupId>com.h2database</groupId>
+    <artifactId>h2</artifactId>
+  </dependency>
+
+  <dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-jpa</artifactId>
+  </dependency>
+</dependencies>
+~
+Notice we're removed the version & scope here, so it would be handle by Spring Starter Dependencies
+
+
+
+
+
+~
+
+
+
+
+
+
+🚀 Configure Database Connection Details
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+In this lesson, let's configure H2 database Access details in application.properties file
+
+<EmailNotifiactionMicroservice>
+[✏️#~/...application.properties]
+...
+spring.h2.console.enabled=true
+spring.datasource.driverClassName=org.h2.Driver
+spring.jpa.database-platform=org.hibernate.dialect.H2Dialect
+spring.datasource.url=jdbc:h2:mem:testdb
+spring.datasource.username={USERNAME}
+spring.datasource.password={PASSWORD}
+
+
+
+
+
+~
+
+
+
+
+
+
+🚀 Creating JPA Entity
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+In this lesson...
+Let's create the JPA entity that wer going to use to store information in a database.
+
+[✏️#~/...ProcessedEventEntity.java]
+import java.io.Serializable;
+import jakarta.persistence.Entity;
+
+@Entity
+@Table(name="processed-events")
+@Getter @Setter //exclude serialVersionUID
+@NoArgsConstructor
+@AllArgsConstructor  //exclude id
+public class ProcessedEventEntity implements Serializable {
+
+  private static final long serialVersionUID = 36875532697422697084L;
+
+  @Id
+  @GeneratedValue
+  private long id;
+
+  @Column(nullable=false, unique=true)
+  private String messageId;
+
+  @Column(nullable=false)
+  private String productId;
+
+
+}
+
+
+
+
+
+~
+
+
+
+
+
+
+🚀 Create JPA Repository
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[✏️#~/...ProcessedEventRepository]
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface ProcessedEventRepository extends JpaRepository<ProcessedEventEntity, Long> {
+
+}
+
+
+
+
+
+~
+
+
+
+
+
+
+🚀 Stroring a Unique messageId in a Database table
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+<EmailNotifiactionMicroservice>
+[✏️#~/...ProductCreatedEventHandler.java]
+
+import org.springframework.messaging.handler.annotation;
+
+@Component
+@KafkaListener(topics="product-created-events-topic")
+public class ProductCreatedEventHandler {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+    
+    private RestTemplate restTemplate;
+    private ProcessedEventRepository processedEventRepository;
+
+    public ProductCreatedEventHandler(RestTemplate restTemplate, ProcessedEventRepository processedEventRepository) {
+        this.restTemplate = restTemplate;
+        this.processedEventRepository = processedEventRepository;
+    }
+
+    @Transactional
+    @KafkaHandler
+    //public void handle(ProductCreatedEvent productCreatedEvent) {
+    public void handle(
+      @Payload ProductCreatedEvent productCreatedEvent,
+      @Header("messageId") String messageId,
+      @Header(KafkaHeaders.RECEIVED_KEY) String messageKey
+    ) {
+        //if(true) throw new NotRetryableException("An error took place. No need to consume this message again");
+        LOGGER.info("Received a new event: " + productCreatedEent.getTitle() 
+          + " with productId: " + productCreatedEvent.getProductId());  //💥
+
+        String requestUrl = "http://localhost:8082/response/200"; 
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(requestUrl, HttpMethod.GET, null, String.class);
+            if(response.getStatusCode().value() == HttpStatus.OK.value()) {
+                LOGGER.info("Received response from a remote service: " + response.getBody());
+            }
+        } catch(ResourceAccessException ex) {
+            LOGGER.error(ex.getMessage());
+            throw new RetryableException(ex);
+        } catch(HttpServerErrorException | Exception ex) {
+            LOGGER.error(ex.getMessage());
+            throw new NotRetryableException(ex);
+        }
+
+💥      // Save a unique message Id in database table
+💥      try{
+💥        processedEventRepository.save(new ProcessedEventEntity(messageId, productCreatedEvent.getProductId()));
+💥      } catch(DataIntegrityViolationException ex) {
+💥        throw new NotRetryableException(ex);
+💥      }
+        
+    }
+}
+~
+Since I'm performing a Modified Operation here. (We're saving data into a database table)
+ -> Let's annotate this method with @Transactional annotation
+
+🧐🕵️‍♂️🔎  This @Transactional annotation will make Business Logic inside of this method execute within a Transaction
+ -> This means that if this method throws exception
+    ..any changes you did to a database, will be rolled back
+
+
+
+
+
+~
+
+
+
+
+
+
+🚀 Check if Kafka Message was processed earlier
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[✏️#~/...ProcessedEventRepository]
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface ProcessedEventRepository extends JpaRepository<ProcessedEventEntity, Long> {
+💥  ProcessedEventEntity findByMessageId(String messageId);
+}
+
+
+<EmailNotifiactionMicroservice>
+[✏️#~/...ProductCreatedEventHandler.java]
+
+import org.springframework.messaging.handler.annotation;
+
+@Component
+@KafkaListener(topics="product-created-events-topic")
+public class ProductCreatedEventHandler {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+    
+    private RestTemplate restTemplate;
+    private ProcessedEventRepository processedEventRepository;
+
+    public ProductCreatedEventHandler(RestTemplate restTemplate, ProcessedEventRepository processedEventRepository) {
+        this.restTemplate = restTemplate;
+        this.processedEventRepository = processedEventRepository;
+    }
+
+    @Transactional
+    @KafkaHandler
+    //public void handle(ProductCreatedEvent productCreatedEvent) {
+    public void handle(
+      @Payload ProductCreatedEvent productCreatedEvent,
+      @Header("messageId") String messageId,
+      @Header(KafkaHeaders.RECEIVED_KEY) String messageKey
+    ) {
+        //if(true) throw new NotRetryableException("An error took place. No need to consume this message again");
+        LOGGER.info("Received a new event: " + productCreatedEent.getTitle() 
+          + " with productId: " + productCreatedEvent.getProductId());
+
+💥      // Check if this message was already processed before
+💥      ProcessedEventEntity existingRecord = processedEventRepository.find(messageId);
+💥      if(existingRecord != null) {
+💥        LOGGER.info("Found a duplicate message id: {}", existingRecord.messageId):
+💥        return;
+💥      }
+
+        String requestUrl = "http://localhost:8082/response/200"; 
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(requestUrl, HttpMethod.GET, null, String.class);
+            if(response.getStatusCode().value() == HttpStatus.OK.value()) {
+                LOGGER.info("Received response from a remote service: " + response.getBody());
+            }
+        } catch(ResourceAccessException ex) {
+            LOGGER.error(ex.getMessage());
+            throw new RetryableException(ex);
+        } catch(HttpServerErrorException | Exception ex) {
+            LOGGER.error(ex.getMessage());
+            throw new NotRetryableException(ex);
+        }
+
+💥      // Save a unique message Id in database table
+💥      try{
+💥        processedEventRepository.save(new ProcessedEventEntity(messageId, productCreatedEvent.getProductId()));
+💥      } catch(DataIntegrityViolationException ex) {
+💥        throw new NotRetryableException(ex);
+💥      }
+        
+    }
+}
+
+
+
+
+
+~
+
+
+
+
+
+
+🚀 Trying how it works
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+The ideal way to test this scenario of dealing with the same messageId would be through Integration Tests.
+Since we're not seen how to create an Integration Test yet, let's add some breakpoints and debug our application.
+
+
+📝 Let's hardcode the messageId, so it always use the same value >>>
+---------------
+[✏️#~/...ProductServiceImpl]
+import org.apache.kafka.clients.producer.ProducerRecord;
+
+@Service
+public class ProductServiceImpl implements ProductService {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+
+    KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate;
+
+    public ProductServiceImpl(KafkaTemplate<String, ProductCreatedEvent> kafkaTemplate) {
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
+    @Override 
+    public String createProduct(CreateProductRestModel productRestModel) throws Exception {
+        String productId = UUID.randomUUID().toString();
+        //TODO: Persist Product Details into database table before publishing an Event
+
+        ProductCreatedEvent productCreatedEvent = new ProductCreatedEvent(
+            productId,
+            productRestModel.getTitle(),
+            productRestModel.getPrice(),
+            productRestModel.getQuantity()
+        );
+
+        LOGGER.info("Before publishing a ProductCreatedEvent");
+
+        ProducerRecord<String, ProductCreatedEvent> producerRecord = 
+          new ProducerRecord<>("topic2", productId, productCreatedEvent);
+        String messageId = "12345";
+        producerRecord.headers().add("messageId", 💥messageId💥.getBytes());
+
+        SendResult<String, ProductCreatedEvent> result = 
+          kafkaTemplate.send(producerRecord).get();
+        //  kafkaTemplate.send("topic2", productId, productCreatedEvent).get();
+        
+        LOGGER.info("Partition: " + result.getRecordMetadata().partition());
+        LOGGER.info("Topic: " + result.getRecordMetadata().topic());
+        LOGGER.info("Offset: " + result.getRecordMetadata.offset());
+
+        LOGGER.info("***** Returning product id");
+
+        return productId;
+    }
+}
+~
+
+
+📝 Let's start all three microservices  👇...
+---------------
+[IntelliJ]
+ProductsMicroservice
+  > ▶️ ProductsApplication
+
+[IntelliJ]
+EmailNotificationMicroservice
+  > ▶️ EmailNotificationApplication
+
+[IntelliJ]
+MockResponseMicroservice
+  > ▶️ MockServiceApplication
+
+
+
+
+✏️>>> Let's make a Product Creation Request  👇...
+[POSTMAN]
+[POST] http://localhost:{PORT}/products
+{
+    "title": "iPad Pro",
+    "price": 1200,
+    "quantity": 2
+}
+
+
+...
+
+📝 Let's review our record was stored at H2 database  👇...
+---------------
+<EmailNotifiactionMicroservice>
+[✏️#~/...application.properties]
+...
+spring.h2.console.enabled=true
+spring.datasource.driverClassName=org.h2.Driver
+spring.jpa.database-platform=org.hibernate.dialect.H2Dialect
+spring.datasource.url=jdbc:h2:mem:testdb
+spring.datasource.username={USERNAME}
+spring.datasource.password={PASSWORD}
+
+
+⚓ http://localhost:{PORT}/h2-console
+ o Driver class: org.h2.Driver
+ o JDBC URL: jdbc:h2:mem:testdb
+ o User name: {USERNAME}
+ o Password: {PASSWORD}
+   => Connect
+...
+[SQL Statement]
+SELECT * FROM 'processed-events';
+
+
+...
+
+
+✏️>>> If we make a new Product Creation Request 👇...
+[POSTMAN]
+[POST] http://localhost:{PORT}/products
+{
+    "title": "iPad Pro",
+    "price": 1200,
+    "quantity": 2
+}
+~
+Since the messageId is hardcoded, it should log the message:
+<<Found a duplicate message id: 12345

@@ -1,0 +1,81 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgement & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handling Deserialization Errors
+📝 S11 : Kafka Consumer - Kafka Consumer Dead Letter Topic
+📝 S12 : Kafka Consumer - Exceptions and Retries
+📝 S13 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S14 : Kafka Consumer Idempotency
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 22 - Appendix B: Install Apache Kafka on Windows
+=======================================================================================================================================
+
+
+
+🚀 How to Run Apache Kafka on Windows
+=======================================================================================================================================
+
+⚓ https://www.confluent.io/blog/set-up-and-run-kafka-on-windows-linux-wsl-2/
+
+Windows isn’t the recommended platform for running Kafka with production workloads.
+ -> However for trying out Kafka, it works just fine.
+Thanks to the Windows Subsystem for Linux 2 (WSL 2), now we can run Apache Kafka® on Windows.
+
+
+Set up your environment 
+  +  Install Windows Subsystem for Linux
+    - Enable WSL 2
+    - Install Java 
+    - Download Kafka
+
+Make sure you’re running Windows 10 version 21H1 or later, or Windows 11 21H2 or later. 
+To check your version, navigate to Settings > System > About. 
+In the Windows specifications section, find Version.
+(Ensure that you have all updates to your version installed.)
+
+
+📝 Enable WSL 2
+-----
+To install the WSL 2 feature, open PowerShell as an administrator, and run the following command:
+
+$ wsl --install
+~
+This command installs the Microsoft Store version of WSL and automatically selects the WSL 2 version. 
+Also, it installs the default Linux distro, which is Ubuntu 22.04 as of this writing.
+Tip: If you already have the non-Store version of WSL installed, you can run the wsl –update command to get it.
+
+ -> Reboot your machine.
+
+
+📝 Install Java
+
+
+📝 Download Kafka
+-----
+⚓ https://kafka.apache.org/downloads
+
+wget https://dlcdn.apache.org/kafka/3.5.0/kafka_2.13-3.5.0.tgz
+..
+tar -xzf kafka_2.13-3.5.0.tgz
+cd kafka_2.13-3.5.0

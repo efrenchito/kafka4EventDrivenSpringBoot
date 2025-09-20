@@ -1,0 +1,662 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgment & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handling Deserialization Errors
+📝 S11 : Kafka Consumer - Kafka Consumer Dead Letter Topic
+📝 S12 : Kafka Consumer - Exceptions and Retries
+📝 S13 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S14 : Kafka Consumer Idempotency
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 16 - Apache Kafka and Database Transactions
+=======================================================================================================================================
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+In the following lessons, we'll learn how to use Kafka and Database Transactions together.
+
+In previous lesson, TransferMicroservice.transfer() method was annotated with @Transactional("kafkaTransactionManager")
+ -> This means all of our send() methods were executed within a Single Kafka Transaction.
+ => To make sure that Consumer Microservices do NOT read messages that were NOT successfully committed
+    ...the two Consumer microservices related need to be configured to read committed messages only
+    ...spring.kafka.consumer.isolation-level=READ_COMMITTED
+
+
+
+📝 Database + Kafka Operations within a Single  Transaction
+---------------
+
+                                    (Producer)
+                                     Transfer 
+                                   Microservice
+   (Client)     Http Request   
+   [Postman]   ------------->     RequestHandler                                                    
+                                               
+                                               
+                                @Transactional
+                             ----------------------  
+                            |       # save()       | -------->  [DB]
+                            |                      |                                            (Consumer)
+                            |       * send()       | -------->  [withdraw-money-topic]  --->   [Withdrawal]
+                            |                      |                                          [Microservice]
+                            |        httpCall()    | ----------->  (External Service)
+                            |                      |                                            (Consumer) 
+                            |       * send()       | -------->  [deposit-money-topic]   --->     [Deposit]
+                             ----------------------                                            [Microservice]     
+~
+🧐🕵️‍♂️🔎 Notice for this example we'll require two Transaction Managers: 
+* KafkaTransactionManager -> Manage Kafka Transactions
+# JPATransactionManager   -> Manage Database Transactions
+
+
+
+📝 What happens if you have a single method that require multiple Transactional Managers❓
+---------------
+🤯⚠️🧨 Spring's @Transactional annotation will only use one transaction manager at a time.
+
+Usually the one configured as the primary transaction manager for the @Transactional scope  -> JpaTransactionManager
+🧐🕵️‍♂️🔎  If you have both JpaTransactionManager and KafkaTransactionManager configured in your Spring context
+ -> Spring will use JpaTransactionManager by default to manage the transaction boundary for JPA.
+    ..This because JPA is typically considered the main resource for transactional management unless specified otherwise.
+ -> In that case Kafka operations will NOT be automatically included in this transaction by Spring’s default configuration.
+    ..You would need to manually manage Kafka transactions if you want Kafka operations to be part of the same "transactional" flow.
+...
+This means that while the JPA operations (like database updates) will be committed or rolled back based on the transaction's success/failure
+The Kafka operations are not automatically included in the rollback/commit unless explicitly managed.
+
+🤯⚠️🧨 @Transactional will use JpaTransactionManager by default if NO @Primary Transaction Manager specified
+ -> You can change this by using @Primary annotation
+ -> Explicitly specifying the target Transaction Manager  
+    e.g. @Transactional("kafkaTransactionManager") / @Transactional(transactionManager = "kafkaTransactionManager")
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Understanding Spring Transactions
+PlatformTransactionManager | TransactionInterceptor | @Transactional Attributes & Nested Transactions
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+🛸 What is PlatformTransactionManager❓
+=====================================================================================================================================
+PlatformTransactionManager is a central Spring interface that defines how Spring manages transactions across different underlying resources.
+It provides the abstraction layer that allows Spring's @Transactional annotation (and programmatic transaction handling) to work independently
+of the specific transaction technology (e.g., JPA, JDBC, Hibernate, Kafka, etc.).
+
+[✏️#~/...PlatformTransactionManager.java] >>>
+public interface PlatformTransactionManager {
+    TransactionStatus getTransaction(TransactionDefinition definition) throws TransactionException;
+    void commit(TransactionStatus status) throws TransactionException;
+    void rollback(TransactionStatus status) throws TransactionException;
+}
+~
+>> Responsibilities of PlatformTransactionManager
+ -> Start a transaction (getTransaction)
+ -> Commit a transaction (commit)
+ -> Rollback a transaction (rollback)
+Spring calls these methods behind the scenes when you use @Transactional.
+
+...
+
+📝 Common Implementations of PlatformTransactionManager
+---------------
+Implementation	                Used For
+DataSourceTransactionManager	  JDBC-based database operations
+JpaTransactionManager	          JPA-based persistence (e.g., Hibernate)
+HibernateTransactionManager	      Native Hibernate (non-JPA)
+JmsTransactionManager	          JMS (Java Messaging Service)
+KafkaTransactionManager	          Kafka producer transactions
+
+
+
+
+
+🛸 What is Spring Transaction Interceptor❓
+=====================================================================================================================================
+The TransactionInterceptor is a key component of the transaction management system.
+It is used to handle the declarative transaction management mechanism in Spring.
+The TransactionInterceptor is typically used behind the scenes when applying transaction management to a method, 
+and it coordinates with the transaction management API to begin, commit, or rollback transactions.
+
+
+📝 Purpose of TransactionInterceptor
+---------------
+The primary purpose of the TransactionInterceptor is to intercept method calls and manage the transaction boundaries automatically.
+It does so by:
+ -> Starting a transaction before the method executes.
+ -> Committing the transaction if the method execution completes successfully.
+ -> Rolling back the transaction if the method execution throws an exception 
+    (depending on the exception type and rollback rules).
+
+This is usually done through AOP (Aspect-Oriented Programming)...
+where the TransactionInterceptor acts as an aspect that wraps method execution with transaction management logic.
+
+
+📝 How Does the TransactionInterceptor Work?
+---------------
+The TransactionInterceptor works by being part of a proxy (a Spring proxy) that intercepts method invocations 
+and applies transaction management logic.
+It's most often used when configuring declarative transactions using:
+ -> Annotations (@Transactional)
+ -> Explicit transaction invocation (Less common approach)
+    ✏️>>> 
+	transactionInterceptor.invoke(new TransactionContext(), () -> {
+        // Your transactional code
+        return null;
+	});
+
+
+🤯⚠️🧨 Spring Transaction Interceptor manages transactions...
+Either for methods annotated with @Transactional or explicit invocations
+ o So, when a @Transactional annotated method or transactionInterceptor.invoke() method is called:
+   -> First, it will start @Primary / Specific TransactionManager before executing the method
+   -> Additionally it will considerate: Nested methods  &  propagation @Transactional attribute
+
+
+
+
+
+🛸 Most important attributes of @Transactional annotation
+=====================================================================================================================================
+@Transactional in Spring has several attributes...
+But in practice a handful of them are the most important because they control:
+  -> The Scope | Rollback behavior, and Isolation of your transactions.
+
+
+📝 value / transactionManager
+ -> @Transactional("jpaTransactionManager")
+=> Specifies which transaction manager bean to use
+
+📝 propagation
+ -> REQUIRED (default): Join the existing transaction, or create a new one if none exists.
+ -> REQUIRES_NEW: Always create a new, independent transaction. Suspends any existing one.
+ -> NESTED: Start a nested transaction using a savepoint (rollback only inner part).
+    ... 👉 works only with DataSourceTransactionManager (JDBC).      
+ -> SUPPORTS: Join a transaction if one exists, otherwise run non-transactionally.
+=> Defines how the method joins or starts a transaction.
+
+📝 isolation
+ -> READ_COMMITTED (default in most DBs)
+ -> READ_UNCOMMITTED
+ -> REPEATABLE_READ
+ -> SERIALIZABLE
+ -> DEFAULT (use DB default)
+=> Controls visibility of changes between concurrent transactions. Maps to DB isolation levels
+
+📝 rollbackFor | noRollbackFor
+=> Transactional annotation does not roll back transaction for any exception that takes place.
+By default, it rolls back transaction for Unchecked exceptions (RuntimeException) and for Errors.
+ -> It does NOT roll back transaction on checked exceptions
+ -> Usually checked exceptions are the ones that you need to declare and handle in your method
+ => But don't worry it's actually configurable via ´rollbackFor´ attribute
+
+📝 timeout
+ -> -1 (no limit)
+=> Max time (seconds) before transaction auto-rollback.
+
+📝 readOnly
+ -> false (default value)
+=> Marks transaction as read-only (optimizes queries, prevents writes).
+
+
+
+
+
+🛸 Transactional Nested Methods
+=====================================================================================================================================
+What about having Nested Methods❓...This is private methods that perform Transactional operations
+You can either, annotate...
+ -> Only outer method annotated with @Transactional  🔎Opt1
+ -> Both methods annotated with @Transactional       🔎Opt2
+
+
+📝 Opt1: Only outer method annotated (@Transactional)
+-----
+@Transactional("jpaTransactionManager")
+public void transfer() {
+    send(1);
+    saveToDB();
+    send(2);
+}
+
+public void saveToDB() {
+    // Database Operation
+}
+~
+🧐🕵️‍♂️🔎 >>>>>
+ -> There is a single Transaction : No nested or separate transaction is created.
+ -> The transaction is controlled solely by the outer method (transfer()).
+ -> Rollback/Commit is governed by the outer transaction.
+🤯⚠️🧨 Transaction Manager determines what operations will be rolledback. So, in case of Exception...
+  -> @Transactional("jpaTransactionManager")   : Database Operations will be rolled back 
+  -> @Transactional("kafkaTransactionManager") : Kafka Messages will remaing uncommitted
+
+...
+
+Spring’s @Transactional is implemented via AOP proxying.
+If you call another method in the same bean (like this.saveTransferDetails(..)), it bypasses the proxy.
+That means any @Transactional annotation on the inner method wouldn’t even be considered (self-invocation problem).
+So if saveTransferDetails(..) is not annotated, nothing changes — it still participates in the outer transaction.
+If it were annotated (e.g., with REQUIRES_NEW), that would only work if the method is called via the proxy (i.e., from another bean, not this.method()).
+✅ In summary:
+ -> Without @Transactional on saveToDB(..), it simply executes inside the transaction started by transfer().
+ -> The transaction is controlled solely by the outer method (transfer()).
+ -> Rollback/commit is governed by the outer transaction.
+ -> No nested or separate transaction is created.
+
+
+
+
+📝 Opt2: Both methods annotated with @Transactional
+-----
+@Transactional("kafkaTransactionManager")
+public void transfer() {
+    send(1);
+    saveToDB();
+    send(2);
+}
+
+@Transactional("jpaTransactionManager")
+public void saveToDB() {
+    // Database Operation
+}
+~
+🧐🕵️‍♂️🔎 >>>>>
+ -> There are two transactions 
+ -> Since default propagation is REQUIRED jpaTransaction will be joined to existing transaction
+... 
+What would happen if saveToDB method uses @Transactional(transactionManager="jpaTransactionManager", propagation="NESTED | REQUIRED_NEW")
+So if Kafka Transaction fails, it will rollback Kafka Operations only❌. However, Database Transaction will commit separately ✅
+⚠️ In most cases you would NOT want this to happen
+✅ Probably what you'd want is, if an exception takes place, all operations should be rolledback
+
+
+🤯⚠️🧨 @Transactional annotation will have a single transaction by default
+   ..unless nested methods are annotated with @Transactional 
+   ..or Explicit transaction invocation defined -> transactionInterceptor.invoke | kafkaTemplate.executeInTransaction
+ -> What are the default @Transactional attribute values?
+    e.g. transactionManager = "jpaTransactionManager" (When available)
+    e.g. propagation -> REQUIRED (default)
+    e.g. timeout -> -1 (no limit)
+
+
+✏️ >>>  Play around @Transactional transfer() method changing transactionManager and its propagation attributes between nested methods 
+👆👆👆👆👆
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Demo project & Source Code
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+The project used in this lesson is very similar to the one we used in previous lesson, with a small changes:
+
+
+                                                                                     [Consumer]           
+                                                      ___  Withdrawals Topic   =>  [  Withdraw  ]
+                                                     /                             [Microservice]
+                                                    /
+                                                   /
+                                                  /
+                        [Transfer Microservice]    
+[Transfers Topic]  ->       [Consumer]            \
+                            [Producer]             \ 
+                                                    \                                 [Consumer]
+                                                     \___  Deposits Topic      =>   [  Deposit   ]
+                                                                                    [Microservice]
+
+<TransferMicroservice>
+[✏️#~/...pom.xml]
+dependency -> com.h2database:h2
+
+
+[✏️#~/...application.properties]
+. . .
+spring.h2.console.enabled=true
+spring.datasource.driverClassName:org.h2.Driver
+spring.jpa.database-platform=org.hibernate.dialect.H2Dialect
+spring.datasource.url:jdbc:h2:mem:testdb
+spring.datasource.username={USERNAME}
+spring.datasource.password={PASSWORD}
+
+
+[✏️#~/...TransferEntity.java]
+@Entity
+@Getter @Setter
+@Table(name="transfers")
+public class TransferEntity implements Serializable {
+
+    private static final long serialVersionUID = -6202121587624962351L;
+
+	@Id
+    @Column(nullable = false)
+    private String transferId;
+
+    @Column(nullable = false)
+    private String senderId;
+
+    @Column(nullable = false)
+    private String recepientId;
+
+    @Column(nullable = false)
+    private BigDecimal amount;
+
+    public TransferEntity() {
+    }
+ 
+    public TransferEntity(String transferId, String senderId, String recepientId, BigDecimal amount) {
+        this.transferId = transferId;
+        this.senderId = senderId;
+        this.recepientId = recepientId;
+        this.amount = amount;
+    }
+
+}
+
+
+[✏️#~/...TransferRepository.java]
+public interface TransferRepository extends JpaRepository<TransferEntity, String> {
+
+}
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Creating JPA Transaction Manager
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+<TransferService>
+[✏️#~/...TransfersController.java]
+@RestController
+@RequestMapping("/transfers")
+public class TransfersController {
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+    private TransferService transferService;
+
+    public TransfersController(TransferService transferService) {
+        this.transferService = transferService;
+    }
+
+    @PostMapping()
+    public boolean transfer(@RequestBody TransferRestModel transferRestModel) {
+💥      return transferService.transfer(transferRestModel);
+    }
+}
+
+...
+
+🧐🕵️‍♂️🔎 When working with @Transactional
+Spring by default will look for a Transaction Manager called "transactionManager"
+When your application already contains Transaction Manager it won't create a default TransactionManager @Bean
+
+You can just pass the name of target bean as attribute to @Transactional annotation
+e.g. 
+@Transactional("kafkaTransactionManager")
+@Transactional(transactionManager = "kafkaTransactionManager")
+
+
+@Bean("kafkaTransactionManager")
+KafkaTransactionManager<String, Object> KafkaTransactionManager(ProducerFactory<String, Object> producerFactory) {
+    return new KafkaTransactionManager<>(producerFactory);
+}
+
+@Bean("transactionManager")
+JpaTransactionManager jpaTransactionManager(EntityManagerFactory entityManagerFactory) {
+    return new JpaTransactionManager(entityManagerFactory);
+}
+
+
+
+
+
+~
+
+
+
+
+
+
+🚀 Synchronized Transaction: Saving to Database
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+In this lesson, we'll save information to a Database table using the TransferServiceImpl.transfer() method annotated with @Transactional
+
+
+[✏️#~/...TransferServiceImpl.java]
+@Service
+public class TransferServiceImpl implements TransferService {
+	private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+
+	private KafkaTemplate<String, Object> kafkaTemplate;
+	private Environment environment;
+	private RestTemplate restTemplate;
+💥  private TransferRepository transferRepository;
+
+	public TransferServiceImpl(KafkaTemplate<String, Object> kafkaTemplate, Environment environment,
+			RestTemplate restTemplate, 💥TransferRepository transferRepository💥) {
+		this.kafkaTemplate = kafkaTemplate;
+		this.environment = environment;
+		this.restTemplate = restTemplate;
+💥      this.transferRepository = transferRepository;
+	}
+
+
+❌ Only outer method annotated [@Transactional("jpaTransactionManager")]
+ -> Will Rollback only Database Operations in case of Exception thrown
+===================================
+	@Transactional("transactionManager")
+	@Override
+	public boolean transfer(TransferRestModel transferRestModel) {
+		WithdrawalRequestedEvent withdrawalEvent = new WithdrawalRequestedEvent(transferRestModel.getSenderId(),
+				transferRestModel.getRecepientId(), transferRestModel.getAmount());
+		DepositRequestedEvent depositEvent = new DepositRequestedEvent(transferRestModel.getSenderId(),
+				transferRestModel.getRecepientId(), transferRestModel.getAmount());
+	
+		try {
+			
+💥          //Save record to a database table
+💥          saveTransferDetails(transferRestModel);
+			
+			kafkaTemplate.send(environment.getProperty("withdraw-money-topic", "withdraw-money-topic"),
+					withdrawalEvent);
+			LOGGER.info("Sent event to withdrawal topic.");
+
+			// Business logic that causes and error
+			callRemoteServce();
+
+			kafkaTemplate.send(environment.getProperty("deposit-money-topic", "deposit-money-topic"), depositEvent);
+			LOGGER.info("Sent event to deposit topic");
+
+		} catch (Exception ex) {
+			LOGGER.error(ex.getMessage(), ex);
+			throw new TransferServiceException(ex);
+		}
+
+		return true;
+	}
+
+
+✅ Using @Transactional("jpaTransactionManager") + kafkaTemplate.executeInTransaction(...)
+ -> Will Rollback both Database and Kafka Operations in case of Exception thrown
+===================================
+💥  @Transactional("jpaTransactionManager")
+	public boolean transfer(TransferRestModel transferRestModel) {
+		WithdrawalRequestedEvent withdrawalEvent = new WithdrawalRequestedEvent(
+				transferRestModel.getSenderId(),
+				transferRestModel.getRecepientId(),
+				transferRestModel.getAmount());
+		DepositRequestedEvent depositEvent = new DepositRequestedEvent(
+				transferRestModel.getSenderId(),
+				transferRestModel.getRecepientId(),
+				transferRestModel.getAmount());
+
+		kafkaTemplate.executeInTransaction(kafkaProducer -> {
+			
+			saveTransferDetails(transferRestModel);
+
+			kafkaTemplate.send(environment.getProperty("withdraw-money-topic", "withdraw-money-topic"),
+					withdrawalEvent);
+			LOGGER.info("Sent event to withdrawal topic.");
+
+			callRemoteService();
+
+			kafkaTemplate.send(environment.getProperty("deposit-money-topic", "deposit-money-topic"), depositEvent);
+			LOGGER.info("Sent event to deposit topic.");
+
+			return true;
+		});
+
+		return true;
+	}
+
+💥  private void saveTransferDetails(TransferRestModel transferRestModel) {
+💥  	TransferEntity transferEntity = new TransferEntity();
+💥  	BeanUtils.copyProperties(transferRestModel, transferEntity);
+💥  	transferEntity.setTransferId(Uuid.randomUuid().toString());
+💥  	
+💥  	// Save record to a database table
+💥  	transferRepository.save(transferEntity);
+💥  }
+
+
+	private ResponseEntity<String> callRemoteServce() throws Exception {
+		String requestUrl = "http://localhost:8082/response/200";
+		ResponseEntity<String> response = restTemplate.exchange(requestUrl, HttpMethod.GET, null, String.class);
+
+		if (response.getStatusCode().value() == HttpStatus.SERVICE_UNAVAILABLE.value()) {
+			throw new Exception("Destination Microservice not availble");
+		}
+
+		if (response.getStatusCode().value() == HttpStatus.OK.value()) {
+			LOGGER.info("Received response from mock service: " + response.getBody());
+		}
+		return response;
+	}
+
+}
+~
+🧐🕵️‍♂️🔎 TransferEntity fields are exactly the same as those defined in TransferRestModel class.
+So, I can copy the values from one object to another by using Spring BeanUtils helper class (.copyProperties())
+...
+🤯⚠️🧨 Defining a try-catch and then logging and throwing your own custom exception in the catch block
+ -> Allows you to have control on what is being logged in case of exception and the specific Exception that should be thrown
+✏️>>>
+	kafkaTemplate.executeInTransaction(kafkaProducer -> {
+		try {
+			//DB + Kafka Operations
+		} catch (Exception ex) {
+			LOGGER.error(ex.getMessage(), ex);
+			throw new TransferServiceException(ex);
+		}
+		return true;
+	});	
+
+
+
+
+
+~
+
+
+
+
+
+
+🚀 Enable logging for Kafka and Jpa Transaction Managers
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[✏️#~/...application.properties]
+logging.level.org.springframework.transaction=DEBUG
+logging.level.org.springframework.orm.jpa.JpaTransactionManager=DEBUG
+logging.level.org.springframework.kafka.transaction.KafkaTransactionManager=DEBUG
+logging.level.org.apache.kafka.clients.producer.internals.TransactionManager=DEBUG
+
+
+
+
+
+~
+
+
+
+
+
+
+🚀 Trying how Synchronized Transactions work
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+📝 Make sure microservices are up and running >>>
+
+[IntelliJ]
+TransferMicroservice
+  > ▶️ TransferServiceApplication
+
+[IntelliJ]
+MockResponseMicroservice
+  > ▶️ MockResponseServiceApplication
+
+[IntelliJ]
+WithdrawalMicroservice
+  > ▶️ WithdrawalServiceApplication
+
+[IntelliJ]
+DepositMicroservice
+  > ▶️ DepositServiceApplication
+
+...
+
+✏️>>> Let's make a Transfer Request  👇...
+[POSTMAN]
+[POST] http://localhost:{PORT}/transfers
+{
+    "senderId": "123",
+    "recepientId": "234",
+    "amount": 250
+}
+~
+✅ Status: 200 Ok    Time: 46 ms    Size: 264 B
+
+
+🔎 Check Database and Kakfa Consumer Services logs

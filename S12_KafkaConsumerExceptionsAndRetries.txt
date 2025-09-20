@@ -122,6 +122,23 @@ public class NonRetryableException extends RuntimeException {
  => .addNotRetriableExceptions(...) Allow us to register more than one exception if needed separated by comma
     ✏️>>> errorHandler.addNotRetriableExceptions(NotRetryableException.class, HttpServerErrorException.class);
  => Alternatively we can catch the different exceptions in our Kafka Listener and then throw the custom NotRetryableException
+
+
+❓❓❓ Difference between CommonErrorHandler vs DefaultErrorHandler
+---------------
+CommonErrorHandler is an Interface that generalizes error handling
+DefaultErrorHandler is a concrete implementation of CommonErrorHandler
+.....
+In Spring Kafka < 2.8, you had ErrorHandler and BatchErrorHandler.
+In 2.8+, these were unified under CommonErrorHandler.
+DefaultErrorHandler implements CommonErrorHandler, so it's forward-compatible.
+
+When to use what?
+Use DefaultErrorHandler if u want default retry + DLQ
+.....
+Implement CommonErrorHandler yourself if you want full control (Custom Logic)	
+e.g. Send exhausted messages to a DLQ
+     If u have batch listeners, use a CommonErrorHandler with batch support
 =======================================================================================================================================
 
 Let's register NonRetryableException with ErrorHandler object...
@@ -248,8 +265,8 @@ public class ProductCreatedEventHandler {
 
 
 [IntelliJ]
-EmailNotifiactionMicroservice
-  > ▶️ EmailNotifiactionMicroserviceApplication
+EmailNotificationMicroservice
+  > ▶️ EmailNotificationMicroserviceApplication
 
 
 ✏️>>> Send Kafka Message via POSTMAN >>>
@@ -274,8 +291,8 @@ Pretty | Raw | Preview | Visualize | Text
 
 
 [IntelliJ]
-EmailNotifiactionMicroservice
-  > ▶️ EmailNotifiactionMicroserviceApplication
+EmailNotificationMicroservice
+  > ▶️ EmailNotificationMicroserviceApplication
 ~
 -
 
@@ -318,3 +335,282 @@ We can also add a Wait Time Interval by adding a FixedBackOff object as paramete
     ✏️>>> errorHandler.addRetriableExceptions(RetryableException.class, TimeOutException.class);
  => Alternatively we can catch the different exceptions in our Kafka Listener and then throw the custom RetryableException
 =======================================================================================================================================
+
+
+[✏️#~/...KafkaConsumerConfiguration.java]
+@Configuration
+public class KafkaConsumerConfiguration {
+
+    @Autowired
+    Environment environment;
+
+    @Bean
+    ConsumerFactory<String, Object> consumerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,
+                environment.getProperty("spring.kafka.consumer.bootstrap-servers"));
+        config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        config.put(ConsumerConfig.VALUE_DESERIALIZER_CALSS_CONFIG, ErrorHandlingDeserializer.class);
+        config.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class);
+        config.put(JsonDeserializer.TRUSTED_PACKAGES,
+                environment.getProperty("spring.kafka.consumer.properties.spring.json.trusted.packages"));
+        config.put(ConsumerConfig.GROUP_ID_CONFIG, environment.getProperty("spring.kafka.consumer.group-id"));
+
+        return new DefaultKafkaConsumerFactory<>(config);
+    }
+    ...
+
+    @Bean
+    ConcurrentKafkaListenerContainerFactory<String, Object> kafkaListenerContainerFactory(
+        ConsumerFactory<String, Object> consumerFactory, KafkaTemplate<String, Object> kafkaTemplate
+    ) {
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler(
+            new DeadLetterPublishingRecoverer(kafkaTemplate),
+            new FixedBackOff(5000, 3)
+        );
+        errorHandler.addNotRetryableExceptions(NotRetryableException.class);
+        errorHandler.addNotRetryableExceptions(RetryableException.class);
+
+        ConcurrentKafkaListenerContainerFactory<String, Object> factory = new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory);
+        factory.setCommonErrorHandler(errorHandler);
+
+        return factory;
+    }
+
+    @Bean
+    KafkaTemplate<String, Object> kafkaTemplate(ProducerFactory<String, Object> producerFactory) {
+        return new KafkaTemplate<>(producerFactory);
+    }
+
+    @Bean
+    ProducerFactory<String, Object> producerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, environment.getProperty("spring.kafka.consumer.bootstrap-servers"));
+        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+        config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+
+        return new DefaultKafkaProducerFactory<>(config);
+    }
+}
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Throwing a RetryableException
+==========================================================================================================================================     
+
+[✏️#~/...ProductCreatedEventHandler.java]
+@Component
+@KafkaListener(topics="product-created-events-topic")
+public class ProductCreatedEventHandler {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+    private RestTemplate restTemplate;
+
+    public ProductCreatedEventHandler(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
+
+    @KafkaHandler
+    public void handle(ProductCreatedEvent productCreatedEvent) {
+        //if(true) throw new NotRetryableException("An error took place. No need to consume this message again");
+        LOGGER.info("Received a new event: " + productCreatedEent.getTitle());
+
+        String requestUrl = "http://localhost:8082";
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(requestUrl, HttpMethod.GET, null, String.class);
+            if(response.getStatusCode().value() == HttpStatus.OK.value()) {
+                LOGGER.info("Received response from a remote service: " + response.getBody());
+            }
+        } catch(ResourceAccessException | HttpServerErrorException | ex) {
+            LOGGER.error(ex.getMessage());
+            throw new RetryableException(ex);
+        }
+    }
+}
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Overview of Mock Respnose Microservice
+==========================================================================================================================================
+
+<MockResponseMicroservice>
+[✏️#/...application.properties]
+server.port=8082
+
+<MockServiceMicroservice>
+[✏️#~/...StatusCheckController]
+@RestController
+@RequestMapping("/response")
+public class StatusCheckController {
+
+    @GetMapping("/200")
+    ResponseEntity<String> response200String() {
+        return ResponseEntity.ok().body("200");
+    }
+
+    @GetMapping("/500")
+    ResponseEntity<String> response500String() {
+        return ResponseEntity.internalServerError().build();
+    }
+
+}
+
+
+[IntelliJ]
+MockResponseMicroservice
+  > ▶️ MockServiceApplication
+
+
+[POSTMAN]
+[GET] http://localhost:8082/response/200    Status 200 ok
+200
+...
+[GET] http://localhost:8082/response/500    Status 500 Internal Server Error
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Trying how retry works
+==========================================================================================================================================
+
+📝 Make our ProductCreatedEventHandler request point to  MockResponseMicroservice  /response/200 endpoint 👇...
+---------------´
+<EmailNotifiactionMicroservice>
+[✏️#~/...ProductCreatedEventHandler.java]
+@Component
+@KafkaListener(topics="product-created-events-topic")
+public class ProductCreatedEventHandler {
+
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+    
+    private RestTemplate restTemplate;
+
+    public ProductCreatedEventHandler(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
+
+    @KafkaHandler
+    public void handle(ProductCreatedEvent productCreatedEvent) {
+        //if(true) throw new NotRetryableException("An error took place. No need to consume this message again");
+        LOGGER.info("Received a new event: " + productCreatedEent.getTitle());
+
+        String requestUrl = "http://localhost:8082/response/200";  //💥 -> MockResponseMicroservice
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(requestUrl, HttpMethod.GET, null, String.class);
+            if(response.getStatusCode().value() == HttpStatus.OK.value()) {
+                LOGGER.info("Received response from a remote service: " + response.getBody());
+            }
+        } catch(ResourceAccessException ex) {
+            LOGGER.error(ex.getMessage());
+            throw new RetryableException(ex);
+        } catch(HttpServerErrorException | Exception ex) {
+            LOGGER.error(ex.getMessage());
+            throw new NotRetryableException(ex);
+        }
+    }
+}
+
+
+...
+
+📝 Let's start all three microservices  👇...
+---------------
+[IntelliJ]
+ProductsMicroservice
+  > ▶️ ProductsApplication
+
+[IntelliJ]
+EmailNotificationMicroservice
+  > ▶️ EmailNotificationApplication
+
+[IntelliJ]
+MockResponseMicroservice
+  > ▶️ MockServiceApplication
+
+..and KafkaConsumer CLI to read DLT messages:
+
+[terminal]
+% ./bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+--topic product-created-events-topic.DLT \
+--property print.key=true \
+--property print.value=true
+
+
+~
+
+✏️>>> Let's make a Product Creation Request  👇...
+[POSTMAN]
+[POST] http://localhost:{PORT}/products
+{
+    "title": "iPad Pro",
+    "price": 1200,
+    "quantity": 2
+}
+
+<ProductsMicroservice>
+Once we request the Product Creation endpoint
+ -> It will publish a  ´ProductCreatedEvent´ to  'product-created-events-topic'
+
+<EmailNotifiactionMicroservice>
+ -> Will read the ´ProductCreatedEvent´ message via  'ProductCreatedEventHandler'
+
+...
+
+⛔ Stop 'MockResponseMicroservice'
+ -> This will throw a 'ResourceAccessException'
+ => So, our application will enter on retry mode
+
+To confirm this, add a break-point at:
+  <EmailNotifiactionMicroservice> ProductCreatedEventHandler  -> handle method()
+  -> Exactly when it throws the new RetryableException(...);
+
+
+🔎 >>>
+Once the retry gets exhausted then it will send the message to the DLT
+ ->  This is defined at <EmailNotifiactionMicroservice>KafkaConsumerConfiguration.DefaultErrorHandler
+
+[terminal]
+% ./bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+--topic product-created-events-topic.DLT \
+--property print.key=true \
+--property print.value=true
+. . .
+WARN [Consumer clientId=console-consumer, groupId=console-consumer-76235]
+Error while fetching metadata with correlation id 10 : {product-created-events-topic.DLT=UNKNOWN_TOPIC_OR_PARTITION}
+(org.apache.kafka.clients.NetworkClient)
+14d80a50-234c-4b6c-a718-c58a3fe542a8    {"productId":"14d80a50-234c-4b6c-a718-c58a3fe542a8", "title":"iPad Pro", "price":1200, "quantity":19}
+
+...
+
+✏️>>>
+Having the breakpoints in place, let's stop the MockResponseMicroservice and make a Create Product request
+ -> Once the throw new RetryableException(...) gets triggerred
+ -> Start the MockResponseMicroservice again
+ -> Check the EmailNotifiactionMicroservice doesn't enter to the breakpoint again
+ -> Review the DLT doesn't get the message 
+
+✅ This allow us to check our retry mechanism is in place and the DLT is working correctly

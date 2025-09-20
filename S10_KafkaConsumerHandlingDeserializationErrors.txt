@@ -59,7 +59,7 @@ public class KafkaConsumerConfiguration {
 
 🧐🕵️🔎 'ErrorHandlingDeserializer' will act as a wrapper around JSON Deserializer
  -> So, we need to specify which class will be used internally to perform the value deserialization
- -> However if any Deserialization error happens, 'ErrorHandlingDeserializer' will handle that exception th gracefully
+ -> However if any Deserialization error happens, 'ErrorHandlingDeserializer' will handle that exception gracefully
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 
@@ -127,7 +127,7 @@ In this lessons, we'll learn how to configure our Kafka Consumer application so 
 
 
 So in the next lessons...
-We'll learn how to configure our 'EmailNotifiactionMicroservice' to recover from situations like this.
+We'll learn how to configure our 'EmailNotificationMicroservice' to recover from situations like this.
  -> Handling the exception and continue processing the Next message from Kafka topic.
 
 
@@ -275,7 +275,7 @@ public class KafkaConsumerConfiguration {
 ~
 🧐🕵️🔎 'ErrorHandlingDeserializer' will act as a wrapper around JSON Deserializer
  -> So, we need to specify which class will be used internally to perform the value deserialization
--> However if any Deserialization error happens, 'ErrorHandlingDeserializer' will handle that exception th gracefully
+ -> However if any Deserialization error happens, 'ErrorHandlingDeserializer' will handle that exception th gracefully
 
 
 

@@ -1,0 +1,910 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgment & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handling Deserialization Errors
+📝 S11 : Kafka Consumer - Kafka Consumer Dead Letter Topic
+📝 S12 : Kafka Consumer - Exceptions and Retries
+📝 S13 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S14 : Kafka Consumer Idempotency
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 15 - Apache Kafka Transactions
+=======================================================================================================================================
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+🚀 Introduction to Apache Kafka Transactions
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+Why should we use Transactions in Apache Kafka❓
+ o All or nothing behavior
+ o Exactly Once
+   -> Idempotent Producer
+   -> Transactions
+
+
+Consumer  ->  Process  -> Produce
+                               
+                                                                                     [Consumer]           
+                                                      ___  Withdrawals Topic   =>  [  Withdraw  ]
+                                                     /                             [Microservice]
+                                                    /
+                                                   /
+                                                  /
+                        [Transfer Microservice]    
+[Transfers Topic]  ->       [Consumer]            \
+                            [Producer]             \ 
+                                                    \                                 [Consumer]
+                                                     \___  Deposits Topic      =>   [  Deposit   ]
+                                                                                    [Microservice]
+
+When working with Kafka Transactions...
+There are multiple escenarios we might need to focus on:
+  #1. Publishing Messages to multiple Topics
+  #2. Publishing Messages + Database Transactions
+  #3. Publishing Messages + HTTP Requests
+~
+📝 #1. Publishing Messages to multiple Topics
+When having multiple operations within a single Transaction...
+Each publishing operations will be marked as ⚠️UNCOMMITTED until all of the transactions involved are published successfully
+Once all operations within this transaction are published successfully they will be marked as ✅COMMITTED 
+ -> When using Kafka Transactions we need to configure dependant Consumers to read Committed Messages Only
+...
+❌ If our method crashes for any reason...
+Transaction will be aborted and messages already sent will remain as ⚠️UNCOMMITTED
+Consumers configured to read ✅COMMITTED Messages only, won't be able to see those messages
+-
+✅ If our method completes successfully...
+Transaction will complete and Kafka will mark both messages as committed
+Once all messages are committed they will become visible to Consumer
+~
+📝 #2. Publishing Messages + Database Transactions
+If our Transaction includes writting Database operations
+Technically this will be a separate transaction and Apache Kafka does NOT manage Database Transactions
+However Spring Framework does provide a good integration for managing Kafka and Database transactions
+This integration will help us rollback both database transaction and Kafka Transaction as well
+~
+📝 #3. Publishing Messages + HTTP Requests
+If our Transaction includes code that send HTTP Request to other microservices
+This HTTP Request can't be rolled back in case Transaction fails 
+ => To handle situations like this we'll need implement Compensating Transactions💥
+🧐🕵️‍♂️🔎 The idea behind Compensating Transactions is to be able to undo operations that span multiple Remote Microservices (SAGA)
+
+
+🤯⚠️ Transactions help us write to multiple topics atomically achieving All/Nothing Behavior
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Transfer Application - Overview
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+
+[TransferMicroservice] is configured to work as Kafka producer.
+Kafka producer related configuration can be find in a class that is called ´KafkaConfig´
+
+📝 KafkaConfig
+This class contains Kafka producer configuration that we have already discussed.
+Notice this Kafka Producer Configuration defines two Topics:
+ -> WithdrawTopic: Used for Kafka messages to withdraw money from user account,
+    ✏️>> @Bean NewTopic createWithdrawTopic() { return TopicBuilder.name(withdrawTopicName).partitions(3).replicas(3).build(); }
+ -> DepositTopic: Used for Kafka messages to deposit money to user account.
+    ✏️>> @Bean NewTopic createDepositTopic() { return TopicBuilder.name(depositTopicName).partitions(3).replicas(3).build(); }
+
+. . .
+
+📝 TransferServiceImpl
+Transfer Service class, defines transfer method that receives a TransferDetails as method argument.
+transfer() method defines a Simple Business Logic.
+#1- It sends one Kafka message to ´WithdrawMoneyTopic´
+    ✏️>> kafkaTemplate.send(environment.getProperty("withdraw-money-topic", "withdraw-money-topic"), withdrawalEvent);
+#2- It sends a Http request to a remote service which can potentially throw exception.
+    ✏️>> callRemoteService();
+#3- It sends another Kafka message to a ´DepositMoneyTopic´
+    ✏️>> kafkaTemplate.send(environment.getProperty("deposit-money-topic", "deposit-money-topic"), depositEvent);
+...
+🧐🕵️‍♂️🔎 >>>
+ -> I want these two send methods to be executed in a single transaction.
+ -> I want to make sure that Consumer Microservices receive both of these messages or none of them.
+
+. . .
+
+To read messages from WithdrawMoneyTopic and DepositMoneyTopic
+We have consumer microservices  ´WithdrawalService´ and ´DepositService´
+ -> These two microservices are basic Apache Kafka consumers and all they do is: 
+    ..To consume messages from Kafka topic and log it to a console.
+🧐🕵️‍♂️🔎 Notice we're going to configure this Microservices to consume only ✅COMMITTED messages
+~
+
+
+[✏️#~/...KafkaConfig.java]
+import java.util.HashMap;
+import java.util.Map;
+
+import org.apache.kafka.clients.admin.NewTopic;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.kafka.config.TopicBuilder;
+import org.springframework.kafka.core.DefaultKafkaProducerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.core.ProducerFactory;
+import org.springframework.kafka.transaction.KafkaTransactionManager;
+
+@Configuration
+public class KafkaConfig {
+
+	@Value("withdraw-money-topic")
+	private String withdrawTopicName;
+
+	@Value("deposit-money-topic")
+	private String depositTopicName;
+
+	@Value("${spring.kafka.producer.bootstrap-servers}")
+	private String bootstrapServers;
+
+	@Value("${spring.kafka.producer.key-serializer}")
+	private String keySerializer;
+
+	@Value("${spring.kafka.producer.value-serializer}")
+	private String valueSerializer;
+
+	@Value("${spring.kafka.producer.acks}")
+	private String acks;
+
+	@Value("${spring.kafka.producer.properties.delivery.timeout.ms}")
+	private String deliveryTimeout;
+
+	@Value("${spring.kafka.producer.properties.linger.ms}")
+	private String linger;
+
+	@Value("${spring.kafka.producer.properties.request.timeout.ms}")
+	private String requestTimeout;
+
+	@Value("${spring.kafka.producer.properties.enable.idempotence}")
+	private boolean idempotence;
+
+	@Value("${spring.kafka.producer.properties.max.in.flight.requests.per.connection}")
+	private int inflightRequests;
+	
+	@Value("${spring.kafka.producer.transaction-id-prefix}")
+	private String transactionalIdPrefix;
+
+	public Map<String, Object> producerConfigs() {
+		Map<String, Object> props = new HashMap<>();
+		props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+		props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, keySerializer);
+		props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, valueSerializer);
+		props.put(ProducerConfig.ACKS_CONFIG, acks);
+		props.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, deliveryTimeout);
+		props.put(ProducerConfig.LINGER_MS_CONFIG, linger);
+		props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, requestTimeout);
+
+		props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, idempotence);
+		props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, inflightRequests);
+		
+		props.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, transactionalIdPrefix);
+
+		return props;
+	}
+
+	@Bean
+	ProducerFactory<String, Object> producerFactory() {
+		return new DefaultKafkaProducerFactory<>(producerConfigs());
+	}
+
+	@Bean
+	KafkaTemplate<String, Object> kafkaTemplate(ProducerFactory<String, Object> producerFactory) {
+		return new KafkaTemplate<>(producerFactory);
+	}
+
+	@Bean
+	KafkaTransactionManager<String, Object> kafkaTransactionManager(ProducerFactory<String, Object> producerFactory) {
+		return new KafkaTransactionManager<>(producerFactory);
+	}
+	
+	@Bean
+	NewTopic createWithdrawTopic() {
+		return TopicBuilder.name(withdrawTopicName).partitions(3).replicas(3).build();
+	}
+
+	@Bean
+	NewTopic createDepositTopic() {
+		return TopicBuilder.name(depositTopicName).partitions(3).replicas(3).build();
+	}
+}
+
+
+...
+
+
+[✏️#~/...TransferService.java]
+import com.appsdeveloperblog.estore.transfers.model.TransferRestModel;
+
+public interface TransferService {
+    public boolean transfer(TransferRestModel productPaymentRestModel);
+}
+
+...
+
+[✏️#~/...TransferServiceImpl.java]
+import java.net.ConnectException;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.env.Environment;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
+
+import com.appsdeveloperblog.estore.transfers.error.TransferServiceException;
+import com.appsdeveloperblog.estore.transfers.model.TransferRestModel;
+import com.appsdeveloperblog.payments.ws.core.events.DepositRequestedEvent;
+import com.appsdeveloperblog.payments.ws.core.events.WithdrawalRequestedEvent;
+
+@Service
+public class TransferServiceImpl implements TransferService {
+	private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+
+	private KafkaTemplate<String, Object> kafkaTemplate;
+	private Environment environment;
+	private RestTemplate restTemplate;
+
+	public TransferServiceImpl(KafkaTemplate<String, Object> kafkaTemplate, Environment environment,
+			RestTemplate restTemplate) {
+		this.kafkaTemplate = kafkaTemplate;
+		this.environment = environment;
+		this.restTemplate = restTemplate;
+	}
+
+	@Transactional
+	@Override
+	public boolean transfer(TransferRestModel transferRestModel) {
+		WithdrawalRequestedEvent withdrawalEvent = new WithdrawalRequestedEvent(transferRestModel.getSenderId(),
+				transferRestModel.getRecepientId(), transferRestModel.getAmount());
+		DepositRequestedEvent depositEvent = new DepositRequestedEvent(transferRestModel.getSenderId(),
+				transferRestModel.getRecepientId(), transferRestModel.getAmount());
+
+		try {
+			kafkaTemplate.send(environment.getProperty("withdraw-money-topic", "withdraw-money-topic"),
+					withdrawalEvent);
+			LOGGER.info("Sent event to withdrawal topic.");
+
+			// Business logic that causes and error
+			callRemoteService();
+
+			kafkaTemplate.send(environment.getProperty("deposit-money-topic", "deposit-money-topic"), depositEvent);
+			LOGGER.info("Sent event to deposit topic");
+
+		} catch (Exception ex) {
+			LOGGER.error(ex.getMessage(), ex);
+			throw new TransferServiceException(ex);
+		}
+
+		return true;
+	}
+
+	private ResponseEntity<String> callRemoteService() throws Exception {
+		String requestUrl = "http://localhost:8082/response/200";
+		ResponseEntity<String> response = restTemplate.exchange(requestUrl, HttpMethod.GET, null, String.class);
+
+		if (response.getStatusCode().value() == HttpStatus.SERVICE_UNAVAILABLE.value()) {
+			throw new Exception("Destination Microservice not availble");
+		}
+
+		if (response.getStatusCode().value() == HttpStatus.OK.value()) {
+			LOGGER.info("Received response from mock service: " + response.getBody());
+		}
+		return response;
+	}
+
+}
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Enable Kafka Transactions in application.properties
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+In this lesson, let's learn how to enable Kafka Transactions in a Spring Boot Microservice that acts as Kafka producer
+
+<TransferService>
+[✏️#~/...application.properties]
+...
+spring.kafka.producer.transaction-id-prefix=transfer-service-${random.uuid}
+logging.level.org.springframework.kafka.transaction=TRACE
+logging.level.org.springframework.transaction=TRACE
+
+🧐🕵️‍♂️🔎 When you're working with Transactions in Kafka...you might have multiple producers.
+ -> To manage those producers, Spring Kafka will use something called Producer Factory
+ 
+🧐🕵️‍♂️🔎 This configuration property tells Spring Framework:
+ -> To enable transactions 
+ -> To create a pool of producers that can send messages as part of a transaction.
+...
+Each producer in this pool will be given a Unique transactional ID
+ -> which will have this property value as prefix and a unique number at the end.
+🤯⚠️🧨 I prefer to add '-' at the end of this configuration property  -> ´transfer-service-´
+🧐🕵️‍♂️🔎 You don't need to manually generate this index number  -> ${random.uuid} will generate it automatically for you.
+e.g. transfer-service-0 | transfer-service-1
+
+🤯⚠️🧨 While ${random.value} or java.util.Random can generate random numbers, they do not inherently guarantee uniqueness.
+
+📝 What is used this property for?
+---------------
+Transaction ID prefix is like a name tag that helps Spring Kafka keep track of Transactional Producers.
+ -> It'll use Transaction ID to identify producer instance across multiple sessions
+ => It's very useful in scenarios where your application might crash and restart
+    (Or if you have multiple instances of your application running concurrently.)
+
+🧐🕵️‍♂️🔎 If your application crashes and then restarts.
+ -> Kafka will use this transaction ID to learn what was happening with each transaction before the crash.
+ -> It's like a bookmark that helps Kafka remember where it left off
+ => This way Kafka knows what to do next. So it decides if it should properly continue, or it should rollback the transaction.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Enable Kafka Transactions in the @Bean method
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+When using @Bean ProducerFactory we need to pass within the configuration properties  ´ProducerConfig.TRANSACTIONAL_ID_CONFIG´
+ -> Then this @Bean ProducerFactory needs to be passed as argument to:
+   o @Bean KafkaTemplate
+   o @Bean KafkaTransactionManager
+=======================================================================================================================================
+In this lesson, let's enable Kafka transactions in a Producer Microservice that uses @Bean method to configure Producer Factory.
+
+<TransferService>
+[✏️#~/...KafkaConfig.java]
+@Configuration
+public class KafkaConfig {
+
+	...
+	
+💥	@Value("${spring.kafka.producer.transaction-id-prefix}")
+💥  private String transactionalIdPrefix;
+
+	public Map<String, Object> producerConfigs() {
+		Map<String, Object> props = new HashMap<>();
+		...
+💥		props.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, transactionalIdPrefix);
+
+		return props;
+	}
+
+    @Bean
+	ProducerFactory<String, Object> producerFactory() {
+		return new DefaultKafkaProducerFactory<>(producerConfigs());
+	}
+
+	@Bean
+	KafkaTemplate<String, Object> kafkaTemplate(ProducerFactory<String, Object> producerFactory) {
+		return new KafkaTemplate<>(💥producerFactory💥);
+	}
+
+    @Bean
+	KafkaTransactionManager<String, Object> kafkaTransactionManager(ProducerFactory<String, Object> producerFactory) {
+		return new KafkaTransactionManager<>(💥producerFactory💥);
+	}
+
+    ...
+
+}
+~
+🧐🕵️‍♂️🔎 Notice not only the @Bean producerFactory method uses this properties Map
+ -> @Bean kafkaTemplate that sends Kafka messages will need to use this producer configuration as well.
+ -> This is because I want my Kafka template to be able to send messages within transaction.
+ => That's why we're passing the @Bean producerFactory as argument to the KafkaTemplate constructor
+
+🤯⚠️🧨 Kafka Transaction Manager needs to be able to control the same producer instance that this Kafka template is using.
+ -> I'll create Kafka Transaction Manager with the same producer configuration as this Kafka template
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Apache Kafka and @Transactional annotation
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+In this lesson, we will make our Kafka Producer send both Kafka messages within a single transaction.
+
+
+<TransferService>
+[✏️#~/...TransfersController.java]
+@RestController
+@RequestMapping("/transfers")
+public class TransfersController {
+    private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+    private TransferService transferService;
+
+    public TransfersController(TransferService transferService) {
+        this.transferService = transferService;
+    }
+
+    @PostMapping()
+    public boolean transfer(@RequestBody TransferRestModel transferRestModel) {
+💥      return transferService.transfer(transferRestModel);
+    }
+}
+
+
+[✏️#~/...TransferServiceImpl.java]
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class TransferServiceImpl implements TransferService {
+	private final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
+
+	private KafkaTemplate<String, Object> kafkaTemplate;
+	private Environment environment;
+	private RestTemplate restTemplate;
+
+	public TransferServiceImpl(KafkaTemplate<String, Object> kafkaTemplate, Environment environment,
+			RestTemplate restTemplate) {
+		this.kafkaTemplate = kafkaTemplate;
+		this.environment = environment;
+		this.restTemplate = restTemplate;
+	}
+
+💥  @Transactional
+	@Override
+	public boolean transfer(TransferRestModel transferRestModel) {
+		WithdrawalRequestedEvent withdrawalEvent = new WithdrawalRequestedEvent(transferRestModel.getSenderId(),
+				transferRestModel.getRecepientId(), transferRestModel.getAmount());
+		DepositRequestedEvent depositEvent = new DepositRequestedEvent(transferRestModel.getSenderId(),
+				transferRestModel.getRecepientId(), transferRestModel.getAmount());
+
+		try {
+			kafkaTemplate.send(environment.getProperty("withdraw-money-topic", "withdraw-money-topic"),
+					withdrawalEvent);
+			LOGGER.info("Sent event to withdrawal topic.");
+
+			// Business logic that causes and error
+			callRemoteService();
+
+			kafkaTemplate.send(environment.getProperty("deposit-money-topic", "deposit-money-topic"), depositEvent);
+			LOGGER.info("Sent event to deposit topic");
+
+		} catch (Exception ex) {
+			LOGGER.error(ex.getMessage(), ex);
+			throw new TransferServiceException(ex);
+		}
+
+		return true;
+	}
+
+	private ResponseEntity<String> callRemoteService() throws Exception {
+		String requestUrl = "http://localhost:8082/response/200";
+		ResponseEntity<String> response = restTemplate.exchange(requestUrl, HttpMethod.GET, null, String.class);
+
+		if (response.getStatusCode().value() == HttpStatus.SERVICE_UNAVAILABLE.value()) {
+			throw new Exception("Destination Microservice not availble");
+		}
+
+		if (response.getStatusCode().value() == HttpStatus.OK.value()) {
+			LOGGER.info("Received response from mock service: " + response.getBody());
+		}
+		return response;
+	}
+
+}
+~
+Notice @Transactional is provided to us by Spring Framework (It's not specific to Apache Kafka)
+When you annotate a method with @Transactional annotation...
+ -> You're telling Spring Framework that the code in that method should be executed within a transaction.
+ -> So all operations in that method that support transactions should be treated as a single unit of work
+    ..meaning that they all should either succeed or none of them should succeed.
+ => If the method completes successfully, then transaction commits. Otherwise, transaction rolls back.
+
+🤯⚠️🧨 Since this annotation is not specific to Apache Kafka
+ -> It can be used to execute Java code that works with other systems that support transactions.
+ e.g. Database related operations / Kafka Transactions ...
+
+🧐🕵️‍♂️🔎 The reason why we can use this annotation for Kafka Transaction...
+ -> Is because there is a very good integration between Spring Framework and Apache Kafka.
+ -> To work with Kafka transactions, Spring Framework will use KafkaTransactionManager 
+    (@Bean created in previous lesson)
+
+
+🧐🕵️‍♂️🔎 >>> 
+o If you have only one Transaction Manager bean
+ -> Spring Framework will find it and it will use it to manage Kafka Transactions.
+o If you have multiple different Transaction Managers in your application
+ -> You can tell this annotation which specific transaction manager to use for this method.
+✏️>>> @Transactional(value="kafkaTransactionManager")
+
+🤯⚠️🧨 You can even specify for which specific exceptions our transaction should roll back
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Rollback Transactions for specific exceptions
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+@Transactional(
+    value="kafkaTransactionManager",
+    rollbackFor={TransferException.class, ConnectionException.class},
+    noRollbackFor={SpecificException.class}
+)
+=======================================================================================================================================
+Transactional annotation does not roll back transaction for any exception that takes place.
+By default, it rolls back transaction for Unchecked exceptions (RuntimeException) and for Errors.
+ -> It does NOT roll back transaction on checked exceptions
+ -> Usually checked exceptions are the ones that you need to declare and handle in your method
+ => But don't worry it's actually configurable via ´rollbackFor´ attribute
+
+🤯⚠️🧨 RuntimeExceptions are rolledback by default...
+ -> So, ideally you'll provide to  ´rollbackFor´ attribute only checked exceptions
+    e.g. ConnectionException / SQLException / {Custom}Exception
+
+🧐🕵️‍♂️🔎 ´rollbackFor´ attribute can take multiple exceptions
+✏️>>> @Transactional(value="kafkaTransactionManager", rollbackFor={TransferException.class, ConnectionException.class})
+ -> Even though I've specified specific exceptions 
+ => @Transactional will still rollback for any other Unchecked exception
+
+🧐🕵️‍♂️🔎 We can also specify the Exceptions our application should not rolledback for, using ´noRollbackFor´ attribute
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Reading committed messages in Kafka Consumer
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+In this lesson, let's see how to configure Consumer Microservice to read only those messages that were successfully committed
+If transaction was not successful, Kafka message won't be marked as committed
+.. and those messages won't be visible to our Consumer Microservice.
+
+🧐🕵️‍♂️🔎 By default  ´spring.kafka.consumer.isolation-level´ is set to 'READ_UNCOMMITTED'
+ -> This is it reads everything without waiting for transactions to be committed
+
+READ_COMMITTED -> Will read only those messages that have been successfully committed
+
+
+<WithdrawalService>
+[✏️#~/...application.properties]
+...
+spring.kafka.consumer.isolation-level=READ_COMMITTED
+
+
+[✏️#~/...KafkaConsumerConfiguration.java]
+@Configuration
+public class KafkaConsumerConfiguration {
+
+	@Autowired
+	Environment environment;
+
+	@Bean
+	ConsumerFactory<String, Object> consumerFactory() {
+		Map<String, Object> config = new HashMap<>();
+		
+        ...
+
+💥      config.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, 
+💥          environment.getProperty("spring.kafka.consumer.isolation-level", "READ_COMMITTED")💥.toLowerCase()💥);
+		
+		return new DefaultKafkaConsumerFactory<>(config);
+	}
+. . .
+...
+.
+~
+Unfortunately, at the time of this lesson...
+There is a little inconsistency with the isolation-level configuration value
+ -> application.properties file, wants me to use uppercase.
+ -> However ConsumerFactory wants me to use a lowercase instead.
+    ..Otherwise it'll make my application fail to start
+
+✅ As workaround, we're going to use .toLowerCase() method in our ConsumerFactory for this value
+
+
+✏️>>> Add this property to DepositMicroservice
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Trying how Kafka Transactions work
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+📝 Let's start all three microservices  👇...
+---------------
+[IntelliJ]
+TransferMicroservice
+  > 🐞 TransferMicroserviceApplication
+
+[IntelliJ]
+MockResponseMicroservice
+  > ▶️ MockResponseApplication
+
+[IntelliJ]
+DepositMicroservice
+  > ▶️ DepositServiceApplication
+
+[IntelliJ]
+WithdrawalMicroservice
+  > ▶️ WithdrawalServiceApplication
+
+
+...
+
+
+✏️>>> Let's make a Transfer Request  👇...
+[POSTMAN]
+[POST] http://localhost:{PORT}/transfers
+{
+    "senderId": "123",
+    "recepientId": "234",
+    "amount": 250
+}
+~
+✅ Status: 200 Ok    Time: 46 ms    Size: 264 B
+
+
+...
+
+
+[IntelliJ]
+TransferMicroservice
+  > 🐞 TransferMicroserviceApplication
+~
+<Console Log> 🔎 KafkaTransactionManager
+Created kafka Transaction on producer ...
+Setting transaction for [com.appsdeveloper.estore.transfer.service.TransferServiceImpl.transfer]
+Sent event to withdrawal topic.
+Received response from mock service 200
+Sent event to deposit topic.
+Completing transaction for [com.appsdeveloper.estore.transfer.service.TransferServiceImpl.transfer]
+Initiating transaction commit
+
+
+[IntelliJ]
+WithdrawalMicroservice
+  > ▶️ WithdrawalServiceApplication
+~
+<Console Log>
+...
+Received a new withdrawal event: 250
+
+
+[IntelliJ]
+DepositMicroservice
+  > ▶️ DepositServiceApplication
+~
+<Console Log>
+...
+Received a new deposit event: 250
+
+
+...
+
+
+📝 Let's cause an error and make Transfer Microservice throw an exception  👇...
+✏️>>> Stop MockResponseMicroservice
+[IntelliJ]
+MockResponseMicroservice
+  > ⛔ MockResponseApplication
+
+
+📝 Let's add breakpoints to our TransferServiceImpl.transfer() method
+[✏️#~/...TransferServiceImpl.java]
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class TransferServiceImpl implements TransferService {
+	
+    ...
+
+💥  @Transactional
+	@Override
+	public boolean transfer(TransferRestModel transferRestModel) {
+		WithdrawalRequestedEvent withdrawalEvent = new WithdrawalRequestedEvent(transferRestModel.getSenderId(),
+				transferRestModel.getRecepientId(), transferRestModel.getAmount());
+		DepositRequestedEvent depositEvent = new DepositRequestedEvent(transferRestModel.getSenderId(),
+				transferRestModel.getRecepientId(), transferRestModel.getAmount());
+
+		try {
+🛑          kafkaTemplate.send(environment.getProperty("withdraw-money-topic", "withdraw-money-topic"),
+					withdrawalEvent);
+			LOGGER.info("Sent event to withdrawal topic.");
+
+			// Business logic that causes and error
+🛑          callRemoteService();
+
+🛑          kafkaTemplate.send(environment.getProperty("deposit-money-topic", "deposit-money-topic"), depositEvent);
+			LOGGER.info("Sent event to deposit topic");
+
+		} catch (Exception ex) {
+			LOGGER.error(ex.getMessage(), ex);
+			throw new TransferServiceException(ex);
+		}
+
+		return true;
+	}
+~
+🧐🕵️‍♂️🔎 Since MockResponseMicroservice was stopped...
+ -> When calling the callRemoteService(); method will cause a NetworkException
+ -> Then our @Transactional transfer() method will make our transaction fail
+ => We need to confirm our messages are not committed and Consumers don't read those either.
+
+
+✏️>>> Let's make a Transfer Request  👇...
+[POSTMAN]
+[POST] http://localhost:{PORT}/transfers
+{
+    "senderId": "456",
+    "recepientId": "567",
+    "amount": 175
+}
+~
+❌ Status: 500 Internal Server Error    Time: 46 ms    Size: 264 B
+{
+    "timestamp": "2025-09-17T14:26:37.412+00:00",
+    "status": 500,
+    "error": "Internal Server Error",
+    "path": "/transfers"
+}
+
+
+🔎 Check logs >>>>>
+[IntelliJ]
+TransferMicroservice
+  > 🐞 TransferMicroserviceApplication
+~
+<Console Log> 🔎 KafkaTransactionManager
+Created kafka Transaction on producer ...
+Setting transaction for [com.appsdeveloper.estore.transfer.service.TransferServiceImpl.transfer]
+Sent event to withdrawal topic.
+⚠️ I/O error on GET request for "http://localhost:8082/response/200"
+
+Exception: I/O error on GET request for "http://localhost:8082/response/200": Connection refused
+. . .
+...
+.
+
+
+[IntelliJ]
+WithdrawalMicroservice
+  > ▶️ WithdrawalServiceApplication
+~
+<Console Log>
+...
+Started WithdrawalServiceApplication in 1.439 seconds (process running for 1.859)
+
+
+[IntelliJ]
+DepositMicroservice
+  > ▶️ DepositServiceApplication
+~
+<Console Log>
+...
+Started DepositServiceApplication in 1.725 seconds (process running for 1.725)
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Apache Kafka Local Transactions with KafkaTemplate
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+Kafka Local Transactions allow us to define transactions via executeInTransaction method
+Notice it takes a Lambda Function that returns a boolean value
+
+✏️Kafka Local Transaction >>> 
+boolean returnedValue = kafkaTemplate.executeInTransaction(kt -> {
+    kt.send("withdraw-money-topic", withdrawalEvent);
+
+    callRemoteService();
+
+    kt.send("deposit-money-topic", depositEvent);
+
+    return true;
+});
+
+
+📝 What is the difference between @Transactional & Local Transaction❓ 
+---------------
+The main difference is the scope of the transaction...
+
+🧐🕵️‍♂️🔎 When you annotate a method with transactional annotation, all business logic that you have in this
+method is executed within the same transaction. And this means that if exception is thrown anywhere in this method, 
+then Kafka transaction will be rolled back. It doesn't matter where in this method the exception was thrown.
+If exception is thrown in the beginning/middle/end of the method the Kafka transaction will be rolled back.
+
+
+
+logging.level.org.apache.kafka.clients.producer.internals.TransactionManager=TRACE
+logging.level.org.springframework.kafka.transaction.KafkaTransactionManager=TRACE
+
+
+🤯⚠️🧨 You can combine @Transactional with Kafka Local Transactions
+@Transactional("kafkaTransactionManager")
+public void transfer(TransferRestModel transferRestModel) {
+    boolean returnedValue = kafkaTemplate.executeInTransaction(kt -> {
+        kt.send("withdraw-money-topic", withdrawalEvent);
+        callRemoteService();
+        kt.send("deposit-money-topic", depositEvent);
+
+        return true;
+    });
+    if(true) throw new Exception("Forcing Exception");
+}
