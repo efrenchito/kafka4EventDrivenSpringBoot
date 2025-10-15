@@ -1,0 +1,1031 @@
+📢 Apache Kafka for Event-Driven Spring Boot Microservices  by Sergety Kargopolov
+=======================================================================================================================================
+
+📝 S01 : Apache Kafka Introduction 
+📝 S02 : Apache Kafka Broker
+📝 S03 : Kafka Topics - CLI
+📝 S04 : Kafka Producers - CLI
+📝 S05 : Kafka Consumers - CLI
+📝 S06 : Kafka Producer - Spring Boot Microservice
+📝 S07 : Kafka Producer - Acknowledgment & Retries
+📝 S08 : Kafka Producer - Idempotency
+📝 S09 : Kafka Consumer - Spring Boot Microservice
+📝 S10 : Kafka Consumer - Handling Deserialization Errors
+📝 S11 : Kafka Consumer - Kafka Consumer Dead Letter Topic
+📝 S12 : Kafka Consumer - Exceptions and Retries
+📝 S13 : Kafka Consumer - Multiple Consumers in a Consumer Group
+📝 S14 : Kafka Consumer Idempotency
+📝 S15 : Apache Kafka Transactions
+📝 S16 : Apache Kafka and Database Transactions
+📝 S17 : Integration Testing - Kafka Producer
+📝 S18 : Integration Testing - Kafka Consumer
+📝 S19 : Saga Design Pattern I  - with Apache Kafka
+📝 S20 : Saga Design Pattern II - Compensating Transactions
+📝 S21 : Appendix A: Run Apache Kafka in a Docker Container
+📝 S22 : Appendix B: Install Apache Kafka on Windows
+
+
+
+
+
+📣 Section 20 - Saga Design Pattern II - Compensating Transactions
+=======================================================================================================================================
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+🚀 Introduction to Compensating Transactions in Saga
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+In the following lessons, we will implement Compensating Transactions for our Order Flow.
+As we've already mentioned:
+ -> << Saga is an Event-handling Component that manages sequence of local transactions >>
+
+
+In previous lessons.. 
+We've created a Simple Order Flow managed by Saga.
+It handled multiple events and then it published a command to trigger the next local transaction in Saga.
+Now if one of these local transaction fails, then saga will need to perform a series of compensating transactions.
+Notice these transactions should undo changes that were made by preceding transactions.
+
+
+                 [Order Saga]
+            Handle OrderCreatedEvent          
+                                            
+              ReserveProductCommand  --------   Products
+                                               Microservice
+              ProductReservedEvent   --------
+ 
+              ProcessPaymentCommand❌--------   Payment
+                                               Microservice
+              PaymentProcessedEvent   --------
+
+
+🧐🕵️‍♂️🔎 If ProcessPaymentCommand fails..
+ -> Then saga will need to undo preceding modifying transaction which is reserved product command.
+ -> If there were more modifying transactions performed, then saga will need to undo each of them, but in reverse order.
+
+...
+
+🤯⚠️🧨 In Saga design, pattern compensating transactions are performed in a reverse order.
+🤯⚠️🧨 Another very important point to mention is that 
+  -> You do not need to perform compensating transactions for those steps in saga that did not do any changes in your system.
+🤯⚠️🧨 It's a good practice to store history of events.
+
+
+📝 Preserve History of Events
+---------------
+Each microservice works with its own database and for the orders microservice I created additional database table that I called history.
+This database table keeps track of order statuses and when order status was changed after I perform compensation transaction, 
+I will update order status in orders database. But I will not change any existing records in the history database table.
+And this is because history events do not change. 
+ -> Instead of updating existing records in the history table, I will add a new record to it.
+
+🕵️‍♂️ Orders Database
+
+o Orders
+[ ID     |   TITLE   |  PRICE  | STATUS  ]
+[d6f2d6c5| iPhone 11 |  800    | rejected]
+
+
+o Orders History
+[ORDERID  |  PRODUCTID |  STATUS  |    TIMESTAMP  ]
+[d6f2d6c5 |   4EE43C56 |  created | 1721065476355 ]
+[d6f2d6c5 |   4EE43C56 | rejected | 1721065871157 ]
+
+🧐🕵️‍♂️🔎 Keeping order history is very helpful for auditing and debugging, 
+and it is very similar to Event Sourcing Design Pattern that is often used in Microservices Architecture.
+When event sourcing is used, we keep history of all events that take place.
+History records help us rebuild or reconstruct state of any entity at any point in time, which is very
+helpful for auditing, debugging and compliance purposes.
+
+🤯⚠️🧨 When executing compensating transactions...
+ -> We should NOT Add / Delete records from history database table.
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Handle PaymentFailedEvent
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+In previous lessons, we implemented Order Saga, but we worked on a happy path only.
+In this lesson, we'll start working on a use case where an exception takes place and we need to perform Compensating Transaction.
+
+[IntelliJ]
+<saga-pattern-spring-boot-demo>
+📝 payment-service
+[✏️#~/...com.appsdeveloperblog.payments.handler.PaymentsCommandsHandler]
+@Component
+@KafkaListener(topics="${payments.commands.topic.name}")
+public class PaymentsCommandHandler {
+
+  private final Logger logger = LoggerFactory.getLogger(this.getClass());
+  private final PaymentService paymentService;
+  private final KafkaTemplate<String, Object> kafkaTemplate;
+  private final String paymentEventsTopicName;
+
+  public PaymentsCommandsHandler(
+    PaymentService paymentService,
+    KafkaTemplate<String, Object> kafkaTemplate,
+    @Value("${payments.events.topic.name}") String paymentEventsTopicName
+  ) {
+    this.paymentService = paymentService;
+    this.kafkaTemplate = kafkaTemplate;
+    this.paymentEventsTopicName = paymentEventsTopicName;
+  }
+
+  @KafkaHandler
+  public void handleCommand(@Payload ProcessPaymentCommand command) {
+
+    try{
+      Payment payment = new Payment(
+      command.getOrderId(), command.getProductId(), command.getProductPrice(), command.getProductQuantity());
+      Payment processedPayment = paymentService.process(payment);
+💥    PaymentProcessedEvent paymentProcessedEvent = new PaymentProcessedEvent(
+💥      processedPayment.getOrderId(), processedPayment.getId());
+💥   
+💥    kafkaTemplate.send(payemntEventsTopicName, paymentProcessedEvent);
+    } catch(CreditCardProcessorUnavailableException e) {
+      logger.error(e.getLocalizedMessage(), e);
+💥    PaymentFailedEvent paymentFailedEvent = new PaymentFailedEvent(
+💥        command.getOrderId(), command.getProductId(), command.getProductQuantity());
+💥    kafkaTemplate.send(paymentEventsTopicName, paymentFailedEvent);
+    }
+
+  }
+  
+}
+~
+🧐🕵️‍♂️🔎 This class defines @KafkaHandler annotated method ´handleCommand´ which takes a ProcessPaymentCommand
+If payment is processed successfully it publishes PaymentProcessedEvent.
+However if payment fails and exception is thrown and we publish PaymentFailedEvent
+ -> This is our signal to begin Compensating Transaction
+    ..So, we need to remove ProductReservation for a product
+
+
+
+[IntelliJ]
+<saga-pattern-spring-boot-demo>
+📝 order-service
+[✏️#~/...com.appsdeveloperblog.orders.saga.OrderSaga]
+package com.appsdeveloperblog.orders.saga;
+
+@Component
+@KafkaListener(topics={
+🔎"${orders.events.topic.name}",
+  "${products.events.topic.name}"
+  "${payments.events.topic.name}"
+})
+public class OrderSaga {
+
+  private final KafkaTemplate<String, Object> kafkaTemplate;
+  private final String productsCommandTopicName;
+  private final OrderHistoryService orderHistoryService;
+  private final String paymentsCommandsTopicName;
+  private final String orderCommandsTopicName;
+
+  public OrderSaga(
+    KafkaTemplate<String, Object> kafkaTemplate,
+    @Value("${products.commands.topic.name}") String productsCommandTopicName,
+    OrderHistoryService orderHistoryService,
+    @Value("${payments.commands.topic.name}") String paymentsCommandsTopicName
+    @Value("${orders.commands.topic.name}") String ordersCommandsTopicName
+  ) {
+    this.kafkaTemplate = kafkaTemplate;
+    this.productsCommandsTopicName = productsCommandsTopicName;
+    this.orderHistory = orderHistory;
+    this.paymentsCommandsTopicName = paymentsCommandsTopicName
+  }
+
+  @KafkaHandler
+  public void handleEvent(@Payload OrderCreatedEvent event) {
+
+    ReserveProductCommand command = new ReserveProductCommand(
+      event.getProductId(),
+      event.getProductQuantity(),
+      event.getOrderId()
+    );
+
+    kafkaTemplate.send(productsCommandsTopicName, command);
+    orderHistoryService.add(event.getOrderId(), OrderStatus.CREATED);
+
+  }
+
+  @KafkaHandler
+  public void handleEvent(@Payload ProductReservedEvent event) {
+  
+    ProcessPaymentCommand ProcessPaymentCommand = new ProcessPaymentCommand(
+      event.getOrderId(), event.getProductId(), event.getProductPrice(), event.getProductQuantity());
+    kafkaTemplate.send(paymentsCommandsTopicName, ProcessPaymentCommand);
+  }
+
+  @KafkaHandler
+  public void handleEvent(@Payload PaymentProcessedEvent event) {
+  
+    ApprovedOrderCommand approvedOrderCommand = new ApprovedOrderCommand(event.getOrderId());
+    kafkaTemplate.send(ordersCommandsTopicName, approvedOrderCommand);
+    
+  }
+
+  @KafkaHandler
+  public void handleEvent(@Payload OrderApprovedEvent event) {
+    orderHistoryService.add(event.getOrderId(), OrderStatus.APPROVED);
+  }
+
+💥@KafkaHandler
+💥public void handleEvent(@Payload PaymentFailedEvent event) {
+💥  //TODO: Publish CancelProductReservationCommand
+💥}
+
+}
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Publish CancelProductReservationCommand
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[IntelliJ]
+<saga-pattern-spring-boot-demo>
+📝 core
+  src>main>java
+    com.appsdeveloperblog.core.dto.commands
+    ➕ CancelProductReservationCommand.java
+
+[IntelliJ]
+<saga-pattern-spring-boot-demo>
+📝 core
+[✏️#~/...com.appsdeveloperblog.core.dto.commands.CancelProductReservationCommand]
+@Getters
+@Setters
+@NoArgsConstructor
+@AllArgsConstructor
+public class CancelProductReservationCommand {
+    private UUID productId;
+    private UUID orderId;
+    private Integer productQuantity;
+}
+
+[terminal]
+$ mvn install
+
+
+~
+
+[IntelliJ]
+<saga-pattern-spring-boot-demo>
+📝 order-service
+[✏️#~/...com.appsdeveloperblog.orders.saga.OrderSaga]
+package com.appsdeveloperblog.orders.saga;
+
+@Component
+@KafkaListener(topics={
+🔎"${orders.events.topic.name}",
+  "${products.events.topic.name}"
+  "${payments.events.topic.name}"
+})
+public class OrderSaga {
+
+  private final KafkaTemplate<String, Object> kafkaTemplate;
+  private final String productsCommandTopicName;
+  private final OrderHistoryService orderHistoryService;
+  private final String paymentsCommandsTopicName;
+  private final String orderCommandsTopicName;
+
+  public OrderSaga(
+    KafkaTemplate<String, Object> kafkaTemplate,
+    @Value("${products.commands.topic.name}") String productsCommandTopicName,
+    OrderHistoryService orderHistoryService,
+    @Value("${payments.commands.topic.name}") String paymentsCommandsTopicName
+    @Value("${orders.commands.topic.name}") String ordersCommandsTopicName
+  ) {
+    this.kafkaTemplate = kafkaTemplate;
+    this.productsCommandsTopicName = productsCommandsTopicName;
+    this.orderHistory = orderHistory;
+    this.paymentsCommandsTopicName = paymentsCommandsTopicName
+  }
+
+  @KafkaHandler
+  public void handleEvent(@Payload OrderCreatedEvent event) {
+
+    ReserveProductCommand command = new ReserveProductCommand(
+      event.getProductId(),
+      event.getProductQuantity(),
+      event.getOrderId()
+    );
+
+    kafkaTemplate.send(productsCommandsTopicName, command);
+    orderHistoryService.add(event.getOrderId(), OrderStatus.CREATED);
+
+  }
+
+  @KafkaHandler
+  public void handleEvent(@Payload ProductReservedEvent event) {
+  
+    ProcessPaymentCommand ProcessPaymentCommand = new ProcessPaymentCommand(
+      event.getOrderId(), event.getProductId(), event.getProductPrice(), event.getProductQuantity());
+    kafkaTemplate.send(paymentsCommandsTopicName, ProcessPaymentCommand);
+  }
+
+  @KafkaHandler
+  public void handleEvent(@Payload PaymentProcessedEvent event) {
+  
+    ApprovedOrderCommand approvedOrderCommand = new ApprovedOrderCommand(event.getOrderId());
+    kafkaTemplate.send(ordersCommandsTopicName, approvedOrderCommand);
+    
+  }
+
+  @KafkaHandler
+  public void handleEvent(@Payload OrderApprovedEvent event) {
+    orderHistoryService.add(event.getOrderId(), OrderStatus.APPROVED);
+  }
+
+💥@KafkaHandler
+💥public void handleEvent(@Payload PaymentFailedEvent event) {
+💥  CancelProductReservationCommand cancelProductReservcationCommand =
+💥    new CancelProductReservationCommand(event.getProductId(), event.getOrderId(), event.getProductQuantity());
+💥  kafkaTemplate.send(productsCommandsTopicName, cancelProductReservcationCommand);
+💥}
+
+}
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Handle CancelProductReservationCommand
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[✏️#~/...ProductService.java]
+package com.appsdeveloperblog.products.service;
+
+import com.appsdeveloperblog.core.dto.Product;
+
+import java.util.List;
+import java.util.UUID;
+
+public interface ProductService {
+    List<Product> findAll();
+    Product reserve(Product desiredProduct, UUID orderId);
+💥  void cancelReservation(Product productToCancel, UUID orderId);
+    Product save(Product product);
+}
+
+
+[✏️#~/...ProductServiceImpl.java]
+package com.appsdeveloperblog.products.service;
+
+import com.appsdeveloperblog.core.dto.Product;
+import com.appsdeveloperblog.core.exceptions.ProductInsufficientQuantityException;
+import com.appsdeveloperblog.products.dao.jpa.entity.ProductEntity;
+import com.appsdeveloperblog.products.dao.jpa.repository.ProductRepository;
+import org.springframework.beans.BeanUtils;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+@Service
+public class ProductServiceImpl implements ProductService {
+    private final ProductRepository productRepository;
+
+    public ProductServiceImpl(ProductRepository productRepository) {
+        this.productRepository = productRepository;
+    }
+
+    @Override
+    public Product reserve(Product desiredProduct, UUID orderId) {
+        ProductEntity productEntity = productRepository.findById(desiredProduct.getId()).orElseThrow();
+        if (desiredProduct.getQuantity() > productEntity.getQuantity()) {
+            throw new ProductInsufficientQuantityException(productEntity.getId(), orderId);
+        }
+
+        productEntity.setQuantity(productEntity.getQuantity() - desiredProduct.getQuantity());
+        productRepository.save(productEntity);
+
+        var reservedProduct = new Product();
+        BeanUtils.copyProperties(productEntity, reservedProduct);
+        reservedProduct.setQuantity(desiredProduct.getQuantity());
+        return reservedProduct;
+    }
+
+💥  @Override
+💥  public void cancelReservation(Product productToCancel, UUID orderId) {
+💥      ProductEntity productEntity = productRepository.findById(productToCancel.getId()).orElseThrow();
+💥      productEntity.setQuantity(productEntity.getQuantity() + productToCancel.getQuantity());
+💥      productRepository.save(productEntity);
+💥  }
+
+    @Override
+    public Product save(Product product) {
+        ProductEntity productEntity = new ProductEntity();
+        productEntity.setName(product.getName());
+        productEntity.setPrice(product.getPrice());
+        productEntity.setQuantity(product.getQuantity());
+        productRepository.save(productEntity);
+
+        return new Product(productEntity.getId(), product.getName(), product.getPrice(), product.getQuantity());
+    }
+
+    @Override
+    public List<Product> findAll() {
+        return productRepository.findAll().stream()
+                .map(entity -> new Product(entity.getId(), entity.getName(), entity.getPrice(), entity.getQuantity()))
+                .collect(Collectors.toList());
+    }
+}
+
+...
+
+[IntelliJ]
+<saga-pattern-spring-boot-demo>
+📝 product-service
+[✏️#~/...com.appsdeveloperblog.products.service.handler.ProductCommandsHandler]
+@Component
+@KafkaListener(topics={"${products.commands.topic.name}"})
+public class ProductCommandsHandler {
+
+  private final ProductService productService;
+  private final Logger logger = LoggerFactory.getLogger(this.getClass());
+  private final KafkaTemplate<String, Object> kafkaTemplate;
+  private final String productEventsTopicName;
+
+  public ProductCommandsHandler(
+    ProductService productService,
+    KafkaTemplate<String, Object> kafkaTemplate
+    @Value("${products.events.topic.name}") String productEventsTopicName
+  ) {
+    this.productService = productService;
+  }
+
+  @KafkaHandler
+  public void handleCommand(@Payload ReserveProductCommand command) {
+
+    try {
+      Product desiredProduct = new Product(command.getProductId(), command.getProductQuantity());
+      Product reservedProduct = productService.reserve(desiredProduct, command.getOrderId());
+      ProductReservedEvent productReservedEvent = new ProductReservedEvent(
+        command.getOrderId(),
+        command.getProductId(),
+        reservedProduct.getPrice(),
+        command.getProductQuantity());
+        kafkaTemplate.send(productEventsTopicName, productReservedEvent);
+    } catch(Exception e) {
+      logger.error(e.getLocalizedMessage(), e);
+      ProductReservationFailedEvent productReservationFailedEvent = new ProductReservationFailedEvent(
+        command.getProductId(),
+        command.getOrderId(),
+        command.getProductQuantity() 
+      );    
+    }  
+
+  }
+
+💥@KafkaHandler
+💥public void handleCommand(@Payload CancelProductReservationCommand command) {
+💥  Product productToCancel = new Product(command.getProductId(), command.getProductQuantity());
+💥  productService.cancelReservation(productToCancel, command.getOrderId());
+💥}
+}
+~
+🧐🕵️‍♂️🔎 Now that we've canceled product reservation...
+ -> We need to notify saga about it
+ => So, we'll publish ´ProductReservationCancelledEvent´
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Publish ProductReservationCancelledEvent
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+In this lesson, we are going to notify saga that product reservation has been canceled
+and to do it we'll publish new event that is called ´ProductReservationCancelledEvent´
+
+[IntelliJ]
+<saga-pattern-spring-boot-demo>
+📝 core
+  src>main>java
+    com.appsdeveloperblog.core.dto.commands
+    ➕ ProductReservationCancelledEvent.java
+
+[IntelliJ]
+<saga-pattern-spring-boot-demo>
+📝 core
+[✏️#~/...com.appsdeveloperblog.core.dto.commands.ProductReservationCanceledEvent]
+@Getters
+@Setters
+@NoArgsConstructor
+@AllArgsConstructor
+public class ProductReservationCanceledEvent {
+    private UUID productId;
+    private UUID orderId;
+}
+
+[terminal]
+$ mvn install
+
+~
+
+[IntelliJ]
+<saga-pattern-spring-boot-demo>
+📝 product-service
+[✏️#~/...com.appsdeveloperblog.products.service.handler.ProductCommandsHandler]
+@Component
+@KafkaListener(topics={"${products.commands.topic.name}"})
+public class ProductCommandsHandler {
+
+  private final ProductService productService;
+  private final Logger logger = LoggerFactory.getLogger(this.getClass());
+  private final KafkaTemplate<String, Object> kafkaTemplate;
+  private final String productEventsTopicName;
+
+  public ProductCommandsHandler(
+    ProductService productService,
+    KafkaTemplate<String, Object> kafkaTemplate
+    @Value("${products.events.topic.name}") String productEventsTopicName
+  ) {
+    this.productService = productService;
+  }
+
+  @KafkaHandler
+  public void handleCommand(@Payload ReserveProductCommand command) {
+
+    try {
+      Product desiredProduct = new Product(command.getProductId(), command.getProductQuantity());
+      Product reservedProduct = productService.reserve(desiredProduct, command.getOrderId());
+      ProductReservedEvent productReservedEvent = new ProductReservedEvent(
+        command.getOrderId(),
+        command.getProductId(),
+        reservedProduct.getPrice(),
+        command.getProductQuantity());
+        kafkaTemplate.send(productEventsTopicName, productReservedEvent);
+    } catch(Exception e) {
+      logger.error(e.getLocalizedMessage(), e);
+      ProductReservationFailedEvent productReservationFailedEvent = new ProductReservationFailedEvent(
+        command.getProductId(),
+        command.getOrderId(),
+        command.getProductQuantity() 
+      );    
+    }  
+
+  }
+
+💥@KafkaHandler
+💥public void handleCommand(@Payload CancelProductReservationCommand command) {
+💥  Product productToCancel = new Product(command.getProductId(), command.getProductQuantity());
+💥  productService.cancelReservation(productToCancel, command.getOrderId());
+💥
+💥  ProductReservationCancelledEvent productReservationCancelledEvent = 
+💥    new ProductReservationCancelledEvent(command.getProductId(), command.getOrderId());
+💥  kafkaTemplate.send(productEventsTopicName, productReservationCancelledEvent);
+💥}
+}
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Handle ProductReservationCancelledEvent
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[IntelliJ]
+<saga-pattern-spring-boot-demo>
+📝 core
+  src>main>java
+    com.appsdeveloperblog.core.dto.commands
+    ➕ RejectOrderCommand.java
+
+[IntelliJ]
+<saga-pattern-spring-boot-demo>
+📝 core
+[✏️#~/...com.appsdeveloperblog.core.dto.commands.RejectOrderCommand]
+@Getters
+@Setters
+@NoArgsConstructor
+@AllArgsConstructor
+public class RejectOrderCommand {
+    private UUID orderId;
+}
+
+[terminal]
+$ mvn install
+
+~
+
+[IntelliJ]
+<saga-pattern-spring-boot-demo>
+📝 order-service
+[✏️#~/...com.appsdeveloperblog.orders.saga.OrderSaga]
+package com.appsdeveloperblog.orders.saga;
+
+@Component
+@KafkaListener(topics={
+🔎"${orders.events.topic.name}",
+  "${products.events.topic.name}"
+  "${payments.events.topic.name}"
+})
+public class OrderSaga {
+
+  private final KafkaTemplate<String, Object> kafkaTemplate;
+  private final String productsCommandTopicName;
+  private final OrderHistoryService orderHistoryService;
+  private final String paymentsCommandsTopicName;
+  private final String orderCommandsTopicName;
+
+  public OrderSaga(
+    KafkaTemplate<String, Object> kafkaTemplate,
+    @Value("${products.commands.topic.name}") String productsCommandTopicName,
+    OrderHistoryService orderHistoryService,
+    @Value("${payments.commands.topic.name}") String paymentsCommandsTopicName
+    @Value("${orders.commands.topic.name}") String ordersCommandsTopicName
+  ) {
+    this.kafkaTemplate = kafkaTemplate;
+    this.productsCommandsTopicName = productsCommandsTopicName;
+    this.orderHistory = orderHistory;
+    this.paymentsCommandsTopicName = paymentsCommandsTopicName
+  }
+
+  @KafkaHandler
+  public void handleEvent(@Payload OrderCreatedEvent event) {
+
+    ReserveProductCommand command = new ReserveProductCommand(
+      event.getProductId(),
+      event.getProductQuantity(),
+      event.getOrderId()
+    );
+
+    kafkaTemplate.send(productsCommandsTopicName, command);
+    orderHistoryService.add(event.getOrderId(), OrderStatus.CREATED);
+
+  }
+
+  @KafkaHandler
+  public void handleEvent(@Payload ProductReservedEvent event) {
+  
+    ProcessPaymentCommand ProcessPaymentCommand = new ProcessPaymentCommand(
+      event.getOrderId(), event.getProductId(), event.getProductPrice(), event.getProductQuantity());
+    kafkaTemplate.send(paymentsCommandsTopicName, ProcessPaymentCommand);
+  }
+
+  @KafkaHandler
+  public void handleEvent(@Payload PaymentProcessedEvent event) {
+  
+    ApprovedOrderCommand approvedOrderCommand = new ApprovedOrderCommand(event.getOrderId());
+    kafkaTemplate.send(ordersCommandsTopicName, approvedOrderCommand);
+    
+  }
+
+  @KafkaHandler
+  public void handleEvent(@Payload OrderApprovedEvent event) {
+    orderHistoryService.add(event.getOrderId(), OrderStatus.APPROVED);
+  }
+
+  @KafkaHandler
+  public void handleEvent(@Payload PaymentFailedEvent event) {
+    CancelProductReservationCommand cancelProductReservcationCommand =
+      new CancelProductReservationCommand(event.getProductId(), event.getOrderId(), event.getProductQuantity());
+    kafkaTemplate.send(productsCommandsTopicName, cancelProductReservcationCommand);
+  }
+
+💥@KafkaHandler
+💥public void handleEvent(@Payload ProductReservationCancelledEvent event) {
+💥  RejectOrderCommand rejectOrderCommand = new RejectOrderCommand(even.getOrderId());
+💥  kafkaTemplate.send(ordersCommandTopicName, rejectOrderCommand);
+💥  orderHistoryService.add(event.getOrderId(), OrderStatusRejected);
+💥}  
+}
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Handle RejectOrderCommand
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[IntelliJ]
+<saga-pattern-spring-boot-demo>
+📝 order-service
+
+[✏️#~/...OrderService]
+public interface OrderService {
+  Order placeOrder(Order order);
+  void approveOrder(UUID orderId);
+💥  void rejectOrder(UUID orderId);
+}
+
+
+[✏️#~/...OrderServiceImpl]
+@Service
+public class OrderServiceImpl implements OrderService {
+    private final OrderRepository orderRepository;
+
+    public OrderServiceImpl(OrderRepository orderRepository) {
+        this.orderRepository = orderRepository;
+    }
+
+    @Override
+    public Order placeOrder(Order order) {
+        OrderEntity entity = new OrderEntity();
+        entity.setCustomerId(order.getCustomerId());
+        entity.setProductId(order.getProductId());
+        entity.setProductQuantity(order.getProductQuantity());
+        entity.setStatus(OrderStatus.CREATED);
+        orderRepository.save(entity);
+
+        return new Order(
+                entity.getId(),
+                entity.getCustomerId(),
+                entity.getProductId(),
+                entity.getProductQuantity(),
+                entity.getStatus());
+    }
+
+    @Override
+    public void approveOrder(UUID orderId) {
+        OrderEntity orderEntity = orderRepository
+            .findById(orderId)
+            .orElseThrow("No order is found with id " + orderId + "in the database table");
+        orderEntity.setStatus(OrderStatus.APPROVED);
+        orderRepository.save(orderEntity);
+        OrderApprovedEvent orderApprovedEvent = new OrderApprovedEvent(orderId);
+        kafkaTemplate.send(ordersEventTopicName, orderApprovedEvent);
+    }
+
+[✏️#~/...OrderService]
+public interface OrderService {
+  Order placeOrder(Order order);
+  void approveOrder(UUID orderId);
+}
+
+
+[✏️#~/...OrderServiceImpl]
+@Service
+public class OrderServiceImpl implements OrderService {
+    private final OrderRepository orderRepository;
+
+    public OrderServiceImpl(OrderRepository orderRepository) {
+        this.orderRepository = orderRepository;
+    }
+
+    @Override
+    public Order placeOrder(Order order) {
+        OrderEntity entity = new OrderEntity();
+        entity.setCustomerId(order.getCustomerId());
+        entity.setProductId(order.getProductId());
+        entity.setProductQuantity(order.getProductQuantity());
+        entity.setStatus(OrderStatus.CREATED);
+        orderRepository.save(entity);
+
+        return new Order(
+                entity.getId(),
+                entity.getCustomerId(),
+                entity.getProductId(),
+                entity.getProductQuantity(),
+                entity.getStatus());
+    }
+
+💥  @Override
+💥  public void rejectOrder(UUID orderId) {
+💥      OrderEntity orderEntity = orderRepository.findById(orderId).orElse(null);
+💥      Assert.notNull(orderEntity, "No order found with id: " + orderId);
+💥      orderEntity.setStatus(OrderStatus.REJECTED);
+💥      orderRepository.save(orderEntity);
+💥  }
+
+}
+
+
+[✏️#~/...com.appsdeveloperblog.orders.service.handler.OrderCommandsHandler]
+@Component
+@KafkaListener(topics="${order.commands.topic.name}")
+public class OrderCommandsHandler {
+
+    private final OrderService orderService;
+
+    public OrderCommandsHandler(OrderService orderService) {
+      this.orderService = orderService;
+    }
+
+    @KafkaHandler
+    public void handleCommand(@Payload ApproveOrderCommand approveOrderCommand) {
+        orderService.approveOrder();
+    }
+
+💥  @KafkaHandler
+💥  public void handleCommand(@Payload RejectOrderCommand command) {
+💥      orderService.rejectOrder(command.getOrderId());
+💥  }
+}
+
+
+
+
+
+~
+
+
+
+
+
+🚀 Saga Compensating Transactions - Trying how it works
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+=======================================================================================================================================
+
+[terminal]
+$ cd {WORKSPACE}
+$ ls
+README.md    docker-compose.yml    pom.xml
+$ docker compose up
+~
+🧐🕵️‍♂️🔎 For this command to work your Docker Desktop application should be running on your computer
+
+
+Since, we've made changes in our Project, we need to build our modules
+[terminal]
+$ cd {WORKSPACE}/core
+$ mvn clean install
+
+...
+
+Now, let's run our orders & products service applications
+[IntelliJ]
+<saga-pattern-spring-boot-demo>
+📝 orders-service
+  🐞 OrdersServiceApplication
+   - 🛑 OderSaga.handleEvent(@Payload PaymentFailedEvent event)
+   - 🛑 OrderSaga.handleEvent(@Payload ProductReservationCancelledEvent event)
+   - 🛑 OrderServiceImpl.rejectOrder
+   ✏️>>> Let's add some break points to confirm our Compensating Transactions were triggered...
+📝 products-service
+  ▶️ ProductsServiceApplication  
+📝 payments-service
+  ▶️ PaymentsServiceApplication
+📝 credit-card-processor-service
+  ▶️ CreditCardProcessorApplication    
+~
+🧐🕵️‍♂️🔎 ´payment-service´ communicates with ´credit-card-processor-service´
+ -> So, we'll start it aswell  
+
+
+[POSTMAN]
+[POST] http://localhost:8081/products
+Params | Authorization | Headers | ✅Body | Scripts | Test | settings
+none | form-data | x-www-form-urlencoded | ✅raw | binary | GraphQL | 💥JSON 
+{
+  "name":"iPhone 11",
+  "price":1500,
+  "quantity":5
+}
+  => SEND
+~
+Status: 201 Created  Time: 905 ms  Size: 259 B
+{
+  "id": {UUID}💥
+  "name":"iPhone 11",
+  "price":1500,
+  "quantity":1
+}
+✅ Product has been created successfully
+
+
+✏️ Let's now create a new order >>>
+[POSTMAN]
+[POST] http://localhost:8080/orders
+Params | Authorization | Headers | ✅Body | Scripts | Test | settings
+none | form-data | x-www-form-urlencoded | ✅raw | binary | GraphQL | 💥JSON 
+{
+  "productId":{UUID}💥,
+  "productQuantity":1,
+  "customerId":"{anyValidUUID}"
+}
+~
+Status: 202 Accepted  Time: 1417 ms  Size: 362 B
+{
+  "orderId":{orderID},
+  "customerId": {customerID},
+  "productId": {productID},
+  "productsQuantity": 1,
+  "status": "CREATED"
+}
+
+
+✏️ Let's now retrieve a list of status update for an specific order >>>
+[POSTMAN]
+[GET] http://localhost:8080/orders/{UUID}
+Params | Authorization | Headers | ✅Body | Scripts | Test | settings
+none | form-data | x-www-form-urlencoded | ✅raw | binary | GraphQL | 💥JSON 
+~
+[
+  {
+    "id": {UUID1},
+    "orderId": {UUIDO1},
+    "status": "CREATED",
+    "createdAt": "2025-07-30T16:07:43.566+00:00"
+  },
+  {
+    "id": {UUID2},
+    "orderId": {UUIDo1},
+    "status": "APPROVED",
+    "createdAt": "2025-07-30T16:07:44.274+00:00"
+  }
+]
+
+
+~
+
+
+✏️>>> Let's stop ´credit-card-processor-service´ application to make our PaymentFailedEvent get triggered
+[IntelliJ]
+<saga-pattern-spring-boot-demo>
+📝 credit-card-processor-service
+  ⛔ CreditCardProcessorApplication    
+
+
+✏️ Let's now create a new order >>>
+[POSTMAN]
+[POST] http://localhost:8080/orders
+Params | Authorization | Headers | ✅Body | Scripts | Test | settings
+none | form-data | x-www-form-urlencoded | ✅raw | binary | GraphQL | 💥JSON 
+{
+  "productId":{UUID}💥,
+  "productQuantity":1,
+  "customerId":"{anyValidUUID}"
+}
+~
+Status: 202 Accepted  Time: 1417 ms  Size: 362 B
+{
+  "orderId":{orderID},
+  "customerId": {customerID},
+  "productId": {productID},
+  "productsQuantity": 1,
+  "status": "CREATED"
+}
+
+=> Now our orders-service should be triggered
+🧐🕵️‍♂️🔎 Even though our request was "Accepted"
+ -> We can check the Order status through Order History endpoing
+
+
+✏️ Let's now retrieve a list of status update for an specific order >>>
+[POSTMAN]
+[GET] http://localhost:8080/orders/{UUID}
+Params | Authorization | Headers | ✅Body | Scripts | Test | settings
+none | form-data | x-www-form-urlencoded | ✅raw | binary | GraphQL | 💥JSON 
+~
+[
+  {
+    "id": {UUID1},
+    "orderId": {UUIDO1},
+    "status": "CREATED",
+    "createdAt": "2025-07-30T16:07:43.566+00:00"
+  },
+  {
+    "id": {UUID2},
+    "orderId": {UUIDo1},
+    "status": "REJECTED", 💥
+    "createdAt": "2025-07-30T16:07:44.274+00:00"
+  }
+]
